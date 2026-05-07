@@ -5,6 +5,7 @@ const turnStone = document.querySelector("#turnStone");
 const newGameButton = document.querySelector("#newGame");
 const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
+const aiLevelSelect = document.querySelector("#aiLevel");
 const playerColorSelect = document.querySelector("#playerColor");
 const blackScoreText = document.querySelector("#blackScore");
 const whiteScoreText = document.querySelector("#whiteScore");
@@ -333,7 +334,7 @@ function queueAiMove() {
     const move = bestAiMove(aiColor());
     aiThinking = false;
     if (move) place(move.row, move.col, aiColor());
-  }, 280);
+  }, aiDelay());
 }
 
 function bestAiMove(color) {
@@ -342,13 +343,29 @@ function bestAiMove(color) {
   let best = null;
   const candidates = candidateCells();
   for (const cellPoint of candidates) {
-    const attack = scorePoint(cellPoint.row, cellPoint.col, color);
-    const defense = scorePoint(cellPoint.row, cellPoint.col, opponent(color));
+    const attack = scorePoint(cellPoint.row, cellPoint.col, color, aiLevelSelect.value);
+    const defense = scorePoint(cellPoint.row, cellPoint.col, opponent(color), aiLevelSelect.value);
     const centerBias = 14 - Math.abs(cellPoint.row - 7) - Math.abs(cellPoint.col - 7);
-    const score = Math.max(attack, defense * 0.92) + centerBias;
+    const score = aiMoveScore(attack, defense, centerBias);
     if (!best || score > best.score) best = { ...cellPoint, score };
   }
   return best;
+}
+
+function aiDelay() {
+  return { easy: 160, normal: 260, hard: 360 }[aiLevelSelect.value] || 260;
+}
+
+function aiMoveScore(attack, defense, centerBias) {
+  if (attack >= 100000) return attack;
+  if (defense >= 100000) return defense * 1.08;
+  if (aiLevelSelect.value === "easy") {
+    return Math.max(attack * 0.86, defense * 0.72) + centerBias + Math.random() * 220;
+  }
+  if (aiLevelSelect.value === "hard") {
+    return Math.max(attack * 1.08, defense * 1.04) + centerBias * 1.6;
+  }
+  return Math.max(attack, defense * 0.92) + centerBias;
 }
 
 function candidateCells() {
@@ -377,29 +394,31 @@ function candidateCells() {
   return cells.length ? cells : [{ row: 7, col: 7 }];
 }
 
-function scorePoint(row, col, color) {
+function scorePoint(row, col, color, level = "normal") {
   return [
     [1, 0],
     [0, 1],
     [1, 1],
     [1, -1],
-  ].reduce((sum, [dr, dc]) => sum + scoreLine(row, col, dr, dc, color), 0);
+  ].reduce((sum, [dr, dc]) => sum + scoreLine(row, col, dr, dc, color, level), 0);
 }
 
-function scoreLine(row, col, dr, dc, color) {
+function scoreLine(row, col, dr, dc, color, level = "normal") {
   const forward = scan(row, col, dr, dc, color);
   const backward = scan(row, col, -dr, -dc, color);
   const stones = 1 + forward.stones + backward.stones;
   const openEnds = Number(forward.open) + Number(backward.open);
+  const hard = level === "hard";
+  const easy = level === "easy";
 
   if (stones >= 5) return 100000;
-  if (stones === 4 && openEnds === 2) return 20000;
-  if (stones === 4 && openEnds === 1) return 9000;
-  if (stones === 3 && openEnds === 2) return 3000;
-  if (stones === 3 && openEnds === 1) return 900;
-  if (stones === 2 && openEnds === 2) return 320;
-  if (stones === 2 && openEnds === 1) return 90;
-  return 12 + stones * 8 + openEnds * 6;
+  if (stones === 4 && openEnds === 2) return hard ? 32000 : easy ? 12000 : 20000;
+  if (stones === 4 && openEnds === 1) return hard ? 14000 : easy ? 5200 : 9000;
+  if (stones === 3 && openEnds === 2) return hard ? 6200 : easy ? 1600 : 3000;
+  if (stones === 3 && openEnds === 1) return hard ? 1600 : easy ? 460 : 900;
+  if (stones === 2 && openEnds === 2) return hard ? 620 : easy ? 180 : 320;
+  if (stones === 2 && openEnds === 1) return hard ? 150 : easy ? 48 : 90;
+  return (easy ? 8 : 12) + stones * (hard ? 11 : 8) + openEnds * (hard ? 9 : 6);
 }
 
 function scan(row, col, dr, dc, color) {
@@ -495,7 +514,7 @@ async function pollServer() {
         connectionState = `已连接，你执${colorName(localRemoteColor)}`;
         render();
       }
-      await new Promise((resolve) => setTimeout(resolve, 700));
+      await new Promise((resolve) => setTimeout(resolve, pollDelay(data.events.length)));
     } catch (error) {
       connectionState = `服务器连接中断：${error.message}`;
       render();
@@ -503,6 +522,11 @@ async function pollServer() {
     }
   }
   serverPolling = false;
+}
+
+function pollDelay(eventCount) {
+  if (document.hidden) return 1000;
+  return eventCount ? 80 : 180;
 }
 
 function handleServerEvent(event) {
@@ -736,6 +760,9 @@ aiToggle.addEventListener("change", () => {
 playerColorSelect.addEventListener("change", () => {
   if (isServerGame()) leaveServerRoom("已退出好友房间");
   resetGame(true);
+});
+aiLevelSelect.addEventListener("change", () => {
+  if (aiToggle.checked && !winner && isAiTurn()) queueAiMove();
 });
 createInviteButton.addEventListener("click", () => createInvite().catch((error) => {
   connectionState = `邀请失败：${error.message}`;
