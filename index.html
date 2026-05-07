@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>五子棋</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="play-area" aria-label="五子棋棋盘">
+        <canvas id="board" width="760" height="760"></canvas>
+      </section>
+
+      <aside class="panel">
+        <header>
+          <p class="eyebrow">Gomoku</p>
+          <h1>五子棋</h1>
+        </header>
+
+        <div class="status-card">
+          <span id="turnStone" class="stone black" aria-hidden="true"></span>
+          <div>
+            <p class="label">当前回合</p>
+            <p id="statusText" class="status">黑棋先手</p>
+          </div>
+        </div>
+
+        <div class="controls" aria-label="游戏控制">
+          <button id="newGame" type="button">新局</button>
+          <button id="undo" type="button">悔棋</button>
+        </div>
+
+        <div class="settings" aria-label="设置">
+          <label class="toggle">
+            <input id="aiToggle" type="checkbox" />
+            <span>人机对弈</span>
+          </label>
+          <label class="select-row">
+            <span>执棋</span>
+            <select id="playerColor">
+              <option value="black">黑棋</option>
+              <option value="white">白棋</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="invite" aria-label="邀请好友对决">
+          <div class="invite-head">
+            <div>
+              <p class="label">好友对决</p>
+              <p id="connectionText" class="connection">未连接</p>
+            </div>
+          </div>
+          <div class="invite-actions">
+            <button id="createInvite" type="button">创建邀请</button>
+            <button id="joinInvite" type="button">加入邀请</button>
+            <button id="acceptAnswer" type="button">确认回应</button>
+          </div>
+          <label class="code-field">
+            <span>邀请码</span>
+            <textarea id="inviteCode" rows="3" spellcheck="false"></textarea>
+          </label>
+          <label class="code-field">
+            <span>回应码</span>
+            <textarea id="answerCode" rows="3" spellcheck="false"></textarea>
+          </label>
+          <p class="hint">用服务器打开时，创建邀请会生成链接，好友打开即可加入。</p>
+        </div>
+
+        <div class="score">
+          <div>
+            <span class="score-label">黑棋</span>
+            <strong id="blackScore">0</strong>
+          </div>
+          <div>
+            <span class="score-label">白棋</span>
+            <strong id="whiteScore">0</strong>
+          </div>
+        </div>
+
+        <ol id="moveList" class="moves" aria-label="落子记录"></ol>
+      </aside>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

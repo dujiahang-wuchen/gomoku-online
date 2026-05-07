@@ -1,0 +1,724 @@
+const boardCanvas = document.querySelector("#board");
+const ctx = boardCanvas.getContext("2d");
+const statusText = document.querySelector("#statusText");
+const turnStone = document.querySelector("#turnStone");
+const newGameButton = document.querySelector("#newGame");
+const undoButton = document.querySelector("#undo");
+const aiToggle = document.querySelector("#aiToggle");
+const playerColorSelect = document.querySelector("#playerColor");
+const blackScoreText = document.querySelector("#blackScore");
+const whiteScoreText = document.querySelector("#whiteScore");
+const moveList = document.querySelector("#moveList");
+const createInviteButton = document.querySelector("#createInvite");
+const joinInviteButton = document.querySelector("#joinInvite");
+const acceptAnswerButton = document.querySelector("#acceptAnswer");
+const inviteCode = document.querySelector("#inviteCode");
+const answerCode = document.querySelector("#answerCode");
+const connectionText = document.querySelector("#connectionText");
+
+const size = 15;
+const cell = boardCanvas.width / (size + 1);
+const origin = cell;
+const empty = 0;
+const black = 1;
+const white = 2;
+
+let board = createBoard();
+let current = black;
+let winner = empty;
+let moves = [];
+let scores = { [black]: 0, [white]: 0 };
+let lastMove = null;
+let aiThinking = false;
+let peer = null;
+let channel = null;
+let localRemoteColor = null;
+let connectionRole = null;
+let connectionFailed = false;
+let connectionState = "未连接";
+let serverRoom = null;
+let serverSeq = 0;
+let serverPolling = false;
+let serverClientId = sessionStorage.getItem("gomokuClientId");
+
+if (!serverClientId) {
+  serverClientId = createClientId();
+  sessionStorage.setItem("gomokuClientId", serverClientId);
+}
+
+function createClientId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  const randomPart =
+    window.crypto && typeof window.crypto.getRandomValues === "function"
+      ? Array.from(window.crypto.getRandomValues(new Uint32Array(4)), (value) =>
+          value.toString(16).padStart(8, "0")
+        ).join("")
+      : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return `client-${randomPart}`;
+}
+
+function createBoard() {
+  return Array.from({ length: size }, () => Array(size).fill(empty));
+}
+
+function colorName(color) {
+  return color === black ? "黑棋" : "白棋";
+}
+
+function opponent(color) {
+  return color === black ? white : black;
+}
+
+function playerColor() {
+  return playerColorSelect.value === "black" ? black : white;
+}
+
+function aiColor() {
+  return opponent(playerColor());
+}
+
+function isAiTurn() {
+  return aiToggle.checked && !isServerGame() && current === aiColor() && !winner;
+}
+
+function pointToText(row, col) {
+  return `${String.fromCharCode(65 + col)}${row + 1}`;
+}
+
+function drawBoard() {
+  const w = boardCanvas.width;
+  ctx.clearRect(0, 0, w, w);
+
+  ctx.fillStyle = "#d9ad63";
+  ctx.fillRect(0, 0, w, w);
+
+  ctx.strokeStyle = "rgba(41, 28, 16, 0.72)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < size; i += 1) {
+    const p = origin + i * cell;
+    ctx.beginPath();
+    ctx.moveTo(origin, p);
+    ctx.lineTo(origin + (size - 1) * cell, p);
+    ctx.moveTo(p, origin);
+    ctx.lineTo(p, origin + (size - 1) * cell);
+    ctx.stroke();
+  }
+
+  drawStar(3, 3);
+  drawStar(3, 11);
+  drawStar(7, 7);
+  drawStar(11, 3);
+  drawStar(11, 11);
+
+  for (let row = 0; row < size; row += 1) {
+    for (let col = 0; col < size; col += 1) {
+      if (board[row][col]) drawStone(row, col, board[row][col]);
+    }
+  }
+
+  if (lastMove) drawLastMove(lastMove.row, lastMove.col);
+}
+
+function drawStar(row, col) {
+  const x = origin + col * cell;
+  const y = origin + row * cell;
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(35, 24, 15, 0.86)";
+  ctx.fill();
+}
+
+function drawStone(row, col, color) {
+  const x = origin + col * cell;
+  const y = origin + row * cell;
+  const radius = cell * 0.38;
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.28)";
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 5;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  const gradient = ctx.createRadialGradient(
+    x - radius * 0.35,
+    y - radius * 0.42,
+    radius * 0.12,
+    x,
+    y,
+    radius
+  );
+  if (color === black) {
+    gradient.addColorStop(0, "#72777b");
+    gradient.addColorStop(0.38, "#282d31");
+    gradient.addColorStop(1, "#07090b");
+  } else {
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(0.54, "#f1f1eb");
+    gradient.addColorStop(1, "#c7c7bd");
+  }
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawLastMove(row, col) {
+  const x = origin + col * cell;
+  const y = origin + row * cell;
+  ctx.beginPath();
+  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.strokeStyle = board[row][col] === black ? "#f4d35e" : "#2f7d68";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
+function getCell(event) {
+  const rect = boardCanvas.getBoundingClientRect();
+  const scale = boardCanvas.width / rect.width;
+  const x = (event.clientX - rect.left) * scale;
+  const y = (event.clientY - rect.top) * scale;
+  const col = Math.round((x - origin) / cell);
+  const row = Math.round((y - origin) / cell);
+  if (row < 0 || row >= size || col < 0 || col >= size) return null;
+
+  const px = origin + col * cell;
+  const py = origin + row * cell;
+  if (Math.hypot(x - px, y - py) > cell * 0.45) return null;
+  return { row, col };
+}
+
+function place(row, col, color, options = {}) {
+  if (board[row][col] !== empty || winner) return false;
+  board[row][col] = color;
+  moves.push({ row, col, color });
+  lastMove = { row, col };
+
+  if (hasFive(row, col, color)) {
+    winner = color;
+    scores[color] += 1;
+  } else if (moves.length === size * size) {
+    winner = -1;
+  } else {
+    current = opponent(current);
+  }
+
+  render();
+  if (!options.remote) {
+    sendServerEvent({ type: "move", row, col, color });
+    sendPeerMessage({ type: "move", row, col, color });
+  }
+  return true;
+}
+
+function hasFive(row, col, color) {
+  return [
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [1, -1],
+  ].some(([dr, dc]) => countLine(row, col, dr, dc, color) >= 5);
+}
+
+function countLine(row, col, dr, dc, color) {
+  return (
+    1 +
+    countDirection(row, col, dr, dc, color) +
+    countDirection(row, col, -dr, -dc, color)
+  );
+}
+
+function countDirection(row, col, dr, dc, color) {
+  let total = 0;
+  let r = row + dr;
+  let c = col + dc;
+  while (r >= 0 && r < size && c >= 0 && c < size && board[r][c] === color) {
+    total += 1;
+    r += dr;
+    c += dc;
+  }
+  return total;
+}
+
+function render() {
+  drawBoard();
+  updateStatus();
+  updateMoves();
+  blackScoreText.textContent = scores[black];
+  whiteScoreText.textContent = scores[white];
+  undoButton.disabled = moves.length === 0 || aiThinking || isRemoteGame();
+  acceptAnswerButton.disabled =
+    isServerPage() ||
+    connectionRole !== "host" ||
+    !answerCode.value.trim() ||
+    isRemoteGame() ||
+    !peer ||
+    peer.signalingState !== "have-local-offer";
+  connectionText.textContent = connectionState;
+}
+
+function updateStatus() {
+  turnStone.classList.toggle("black", current === black);
+  turnStone.classList.toggle("white", current === white);
+
+  if (winner === -1) {
+    statusText.textContent = "平局";
+    return;
+  }
+  if (winner) {
+    statusText.textContent = `${colorName(winner)}获胜`;
+    return;
+  }
+  if (isServerGame() && current !== localRemoteColor) {
+    statusText.textContent = `等待${colorName(current)}`;
+    return;
+  }
+  if (isRemoteGame() && current !== localRemoteColor) {
+    statusText.textContent = `等待${colorName(current)}`;
+    return;
+  }
+  statusText.textContent = aiThinking ? "电脑思考中" : `${colorName(current)}落子`;
+}
+
+function updateMoves() {
+  moveList.innerHTML = "";
+  const recent = moves.slice(-12);
+  for (const move of recent) {
+    const item = document.createElement("li");
+    item.textContent = `${colorName(move.color)} ${pointToText(move.row, move.col)}`;
+    moveList.appendChild(item);
+  }
+}
+
+function resetGame(keepScore = true) {
+  board = createBoard();
+  current = black;
+  winner = empty;
+  moves = [];
+  lastMove = null;
+  aiThinking = false;
+  if (!keepScore) scores = { [black]: 0, [white]: 0 };
+  render();
+  queueAiMove();
+}
+
+function resetAndShare() {
+  resetGame(true);
+  sendServerEvent({ type: "reset" });
+  sendPeerMessage({ type: "reset" });
+}
+
+function undoMove() {
+  if (aiThinking || moves.length === 0) return;
+  const undoCount = aiToggle.checked && moves.length > 1 ? 2 : 1;
+  for (let i = 0; i < undoCount; i += 1) {
+    const move = moves.pop();
+    if (!move) break;
+    board[move.row][move.col] = empty;
+  }
+  winner = empty;
+  current = moves.length ? opponent(moves[moves.length - 1].color) : black;
+  lastMove = moves.at(-1) ? { row: moves.at(-1).row, col: moves.at(-1).col } : null;
+  render();
+  queueAiMove();
+}
+
+function queueAiMove() {
+  if (isRemoteGame() || !isAiTurn()) return;
+  aiThinking = true;
+  render();
+  window.setTimeout(() => {
+    const move = bestAiMove(aiColor());
+    aiThinking = false;
+    if (move) place(move.row, move.col, aiColor());
+  }, 280);
+}
+
+function bestAiMove(color) {
+  if (moves.length === 0) return { row: 7, col: 7 };
+
+  let best = null;
+  const candidates = candidateCells();
+  for (const cellPoint of candidates) {
+    const attack = scorePoint(cellPoint.row, cellPoint.col, color);
+    const defense = scorePoint(cellPoint.row, cellPoint.col, opponent(color));
+    const centerBias = 14 - Math.abs(cellPoint.row - 7) - Math.abs(cellPoint.col - 7);
+    const score = Math.max(attack, defense * 0.92) + centerBias;
+    if (!best || score > best.score) best = { ...cellPoint, score };
+  }
+  return best;
+}
+
+function candidateCells() {
+  const seen = new Set();
+  const cells = [];
+  for (const move of moves) {
+    for (let dr = -2; dr <= 2; dr += 1) {
+      for (let dc = -2; dc <= 2; dc += 1) {
+        const row = move.row + dr;
+        const col = move.col + dc;
+        const key = `${row},${col}`;
+        if (
+          row >= 0 &&
+          row < size &&
+          col >= 0 &&
+          col < size &&
+          board[row][col] === empty &&
+          !seen.has(key)
+        ) {
+          seen.add(key);
+          cells.push({ row, col });
+        }
+      }
+    }
+  }
+  return cells.length ? cells : [{ row: 7, col: 7 }];
+}
+
+function scorePoint(row, col, color) {
+  return [
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [1, -1],
+  ].reduce((sum, [dr, dc]) => sum + scoreLine(row, col, dr, dc, color), 0);
+}
+
+function scoreLine(row, col, dr, dc, color) {
+  const forward = scan(row, col, dr, dc, color);
+  const backward = scan(row, col, -dr, -dc, color);
+  const stones = 1 + forward.stones + backward.stones;
+  const openEnds = Number(forward.open) + Number(backward.open);
+
+  if (stones >= 5) return 100000;
+  if (stones === 4 && openEnds === 2) return 20000;
+  if (stones === 4 && openEnds === 1) return 9000;
+  if (stones === 3 && openEnds === 2) return 3000;
+  if (stones === 3 && openEnds === 1) return 900;
+  if (stones === 2 && openEnds === 2) return 320;
+  if (stones === 2 && openEnds === 1) return 90;
+  return 12 + stones * 8 + openEnds * 6;
+}
+
+function scan(row, col, dr, dc, color) {
+  let stones = 0;
+  let r = row + dr;
+  let c = col + dc;
+  while (r >= 0 && r < size && c >= 0 && c < size && board[r][c] === color) {
+    stones += 1;
+    r += dr;
+    c += dc;
+  }
+  return {
+    stones,
+    open: r >= 0 && r < size && c >= 0 && c < size && board[r][c] === empty,
+  };
+}
+
+boardCanvas.addEventListener("click", (event) => {
+  if (aiThinking || isAiTurn()) return;
+  if (isRemoteGame() && current !== localRemoteColor) return;
+  if (isServerGame() && current !== localRemoteColor) return;
+  const cellPoint = getCell(event);
+  if (!cellPoint) return;
+  if (place(cellPoint.row, cellPoint.col, current)) queueAiMove();
+});
+
+function isRemoteGame() {
+  return Boolean(channel && channel.readyState === "open" && localRemoteColor);
+}
+
+function isServerPage() {
+  return location.protocol === "http:" || location.protocol === "https:";
+}
+
+function isServerGame() {
+  return Boolean(serverRoom && localRemoteColor);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      "content-type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || response.statusText);
+  return data;
+}
+
+async function createServerInvite() {
+  const room = await api("/api/rooms", { method: "POST", body: "{}" });
+  const joinUrl = new URL(location.href);
+  joinUrl.searchParams.set("room", room.id);
+  inviteCode.value = joinUrl.href;
+  answerCode.value = "";
+  connectionRole = "host";
+  await joinServerRoom(room.id);
+  connectionState = "链接已生成，发给好友";
+  resetGame(false);
+}
+
+async function joinServerRoom(roomId) {
+  const joined = await api(`/api/rooms/${roomId}/join`, {
+    method: "POST",
+    body: JSON.stringify({ clientId: serverClientId }),
+  });
+  serverRoom = joined.roomId;
+  serverSeq = joined.seq;
+  localRemoteColor = joined.color === "black" ? black : white;
+  aiToggle.checked = false;
+  connectionState =
+    joined.players > 1
+      ? `已连接，你执${colorName(localRemoteColor)}`
+      : `房间已创建，你执${colorName(localRemoteColor)}`;
+  render();
+  pollServer();
+}
+
+async function pollServer() {
+  if (serverPolling || !serverRoom) return;
+  serverPolling = true;
+  while (serverRoom) {
+    try {
+      const data = await api(`/api/rooms/${serverRoom}/events?since=${serverSeq}`);
+      for (const event of data.events) {
+        serverSeq = Math.max(serverSeq, event.seq);
+        if (event.senderId === serverClientId) continue;
+        handleServerEvent(event);
+      }
+      if (data.players > 1) {
+        connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+        render();
+      }
+    } catch (error) {
+      connectionState = `服务器连接中断：${error.message}`;
+      render();
+      await new Promise((resolve) => setTimeout(resolve, 1600));
+    }
+  }
+  serverPolling = false;
+}
+
+function handleServerEvent(event) {
+  if (event.type === "move") place(event.row, event.col, event.color, { remote: true });
+  if (event.type === "reset") resetGame(true);
+  if (event.type === "presence") {
+    connectionState =
+      event.players > 1 ? `已连接，你执${colorName(localRemoteColor)}` : connectionState;
+    render();
+  }
+}
+
+function sendServerEvent(message) {
+  if (!serverRoom) return;
+  api(`/api/rooms/${serverRoom}/events`, {
+    method: "POST",
+    body: JSON.stringify({ ...message, senderId: serverClientId }),
+  }).catch((error) => {
+    connectionState = `发送失败：${error.message}`;
+    render();
+  });
+}
+
+function createPeer() {
+  closePeer();
+  const nextPeer = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun.cloudflare.com:3478" },
+    ],
+  });
+  nextPeer.addEventListener("connectionstatechange", () => {
+    if (nextPeer.connectionState === "connected") {
+      connectionFailed = false;
+      connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+    } else if (nextPeer.connectionState === "failed") {
+      connectionFailed = true;
+      connectionState = "直连失败，请重新创建邀请";
+    } else if (["closed", "disconnected"].includes(nextPeer.connectionState)) {
+      connectionState = "连接已断开";
+    }
+    render();
+  });
+  nextPeer.addEventListener("iceconnectionstatechange", () => {
+    if (["failed", "disconnected"].includes(nextPeer.iceConnectionState) && !isRemoteGame()) {
+      connectionFailed = true;
+      connectionState = "网络无法直连，换网络后重试";
+      render();
+    }
+  });
+  peer = nextPeer;
+  return nextPeer;
+}
+
+function closePeer() {
+  if (channel) channel.close();
+  if (peer) peer.close();
+  channel = null;
+  peer = null;
+  connectionFailed = false;
+}
+
+function setupChannel(nextChannel) {
+  channel = nextChannel;
+  channel.addEventListener("open", () => {
+    connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+    aiToggle.checked = false;
+    render();
+    if (localRemoteColor === black) sendPeerMessage({ type: "sync", board, current, winner, scores, moves, lastMove });
+  });
+  channel.addEventListener("close", () => {
+    connectionState = "连接已断开";
+    render();
+  });
+  channel.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === "move") place(message.row, message.col, message.color, { remote: true });
+    if (message.type === "reset") resetGame(true);
+    if (message.type === "sync") applyPeerSync(message);
+  });
+}
+
+function applyPeerSync(message) {
+  board = message.board;
+  current = message.current;
+  winner = message.winner;
+  scores = message.scores;
+  moves = message.moves;
+  lastMove = message.lastMove;
+  render();
+}
+
+function sendPeerMessage(message) {
+  if (!channel || channel.readyState !== "open") return;
+  channel.send(JSON.stringify(message));
+}
+
+async function waitForIce(peerConnection) {
+  if (peerConnection.iceGatheringState === "complete") return;
+  await new Promise((resolve) => {
+    peerConnection.addEventListener("icegatheringstatechange", () => {
+      if (peerConnection.iceGatheringState === "complete") resolve();
+    });
+  });
+}
+
+function encodeSignal(description) {
+  const bytes = new TextEncoder().encode(JSON.stringify(description));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeSignal(code) {
+  const binary = atob(code.trim());
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+async function createInvite() {
+  if (isServerPage()) {
+    await createServerInvite();
+    return;
+  }
+  if (!("RTCPeerConnection" in window)) {
+    connectionState = "浏览器不支持好友对决";
+    render();
+    return;
+  }
+  const nextPeer = createPeer();
+  connectionRole = "host";
+  connectionFailed = false;
+  localRemoteColor = black;
+  setupChannel(nextPeer.createDataChannel("gomoku"));
+  const offer = await nextPeer.createOffer();
+  await nextPeer.setLocalDescription(offer);
+  await waitForIce(nextPeer);
+  inviteCode.value = encodeSignal(nextPeer.localDescription);
+  answerCode.value = "";
+  aiToggle.checked = false;
+  connectionState = "把邀请码发给好友";
+  resetGame(false);
+}
+
+async function joinInvite() {
+  if (isServerPage()) {
+    const value = inviteCode.value.trim();
+    const roomId = value.startsWith("http") ? new URL(value).searchParams.get("room") : value;
+    if (roomId) await joinServerRoom(roomId);
+    return;
+  }
+  if (!inviteCode.value.trim()) return;
+  const nextPeer = createPeer();
+  connectionRole = "guest";
+  connectionFailed = false;
+  localRemoteColor = white;
+  nextPeer.addEventListener("datachannel", (event) => setupChannel(event.channel));
+  await nextPeer.setRemoteDescription(decodeSignal(inviteCode.value));
+  const answer = await nextPeer.createAnswer();
+  await nextPeer.setLocalDescription(answer);
+  await waitForIce(nextPeer);
+  answerCode.value = encodeSignal(nextPeer.localDescription);
+  aiToggle.checked = false;
+  connectionState = "把回应码发回房主";
+  resetGame(false);
+}
+
+async function acceptAnswer() {
+  if (connectionRole !== "host") {
+    connectionState = "只有房主需要确认回应";
+    render();
+    return;
+  }
+  if (!peer || !answerCode.value.trim()) return;
+  if (connectionFailed) {
+    connectionState = "旧回应码已失效，请重新创建邀请";
+    render();
+    return;
+  }
+  if (peer.signalingState === "stable") {
+    connectionState = isRemoteGame() ? `已连接，你执${colorName(localRemoteColor)}` : "回应码已经确认过，请重开邀请";
+    render();
+    return;
+  }
+  if (peer.signalingState !== "have-local-offer") {
+    connectionState = "请先创建邀请，再确认回应";
+    render();
+    return;
+  }
+  await peer.setRemoteDescription(decodeSignal(answerCode.value));
+  connectionState = "正在连接";
+  render();
+}
+
+newGameButton.addEventListener("click", resetAndShare);
+undoButton.addEventListener("click", undoMove);
+aiToggle.addEventListener("change", resetGame);
+playerColorSelect.addEventListener("change", resetGame);
+createInviteButton.addEventListener("click", () => createInvite().catch((error) => {
+  connectionState = `邀请失败：${error.message}`;
+  render();
+}));
+joinInviteButton.addEventListener("click", () => joinInvite().catch((error) => {
+  connectionState = `加入失败：${error.message}`;
+  render();
+}));
+acceptAnswerButton.addEventListener("click", () => acceptAnswer().catch((error) => {
+  connectionState = `连接失败：${error.message}`;
+  render();
+}));
+answerCode.addEventListener("input", render);
+
+const initialRoom = new URLSearchParams(location.search).get("room");
+if (isServerPage() && initialRoom) {
+  joinServerRoom(initialRoom).catch((error) => {
+    connectionState = `加入失败：${error.message}`;
+    render();
+  });
+} else {
+  resetGame();
+}
