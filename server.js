@@ -120,8 +120,9 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === "GET") {
         const since = Number(url.searchParams.get("since") || 0);
+        const shouldWait = url.searchParams.get("wait") !== "0";
         let events = room.events.filter((event) => event.seq > since);
-        if (!events.length) {
+        if (shouldWait && !events.length) {
           await new Promise((resolve) => {
             const timer = setTimeout(resolve, 25000);
             room.waiters.push(() => {

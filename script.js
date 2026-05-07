@@ -206,6 +206,7 @@ function place(row, col, color, options = {}) {
   render();
   if (!options.remote) {
     sendServerEvent({ type: "move", row, col, color });
+    sendServerState();
     sendPeerMessage({ type: "move", row, col, color });
   }
   return true;
@@ -305,6 +306,7 @@ function resetGame(keepScore = true) {
 function resetAndShare() {
   resetGame(true);
   sendServerEvent({ type: "reset" });
+  sendServerState();
   sendPeerMessage({ type: "reset" });
 }
 
@@ -483,7 +485,7 @@ async function pollServer() {
   serverPolling = true;
   while (serverRoom) {
     try {
-      const data = await api(`/api/rooms/${serverRoom}/events?since=${serverSeq}`);
+      const data = await api(`/api/rooms/${serverRoom}/events?since=${serverSeq}&wait=0`);
       for (const event of data.events) {
         serverSeq = Math.max(serverSeq, event.seq);
         if (event.senderId === serverClientId) continue;
@@ -493,6 +495,7 @@ async function pollServer() {
         connectionState = `已连接，你执${colorName(localRemoteColor)}`;
         render();
       }
+      await new Promise((resolve) => setTimeout(resolve, 700));
     } catch (error) {
       connectionState = `服务器连接中断：${error.message}`;
       render();
@@ -505,11 +508,22 @@ async function pollServer() {
 function handleServerEvent(event) {
   if (event.type === "move") place(event.row, event.col, event.color, { remote: true });
   if (event.type === "reset") resetGame(true);
+  if (event.type === "state") applyServerState(event);
   if (event.type === "presence") {
     connectionState =
       event.players > 1 ? `已连接，你执${colorName(localRemoteColor)}` : connectionState;
     render();
   }
+}
+
+function applyServerState(event) {
+  board = event.board;
+  current = event.current;
+  winner = event.winner;
+  scores = event.scores;
+  moves = event.moves;
+  lastMove = event.lastMove;
+  render();
 }
 
 function sendServerEvent(message) {
@@ -521,6 +535,24 @@ function sendServerEvent(message) {
     connectionState = `发送失败：${error.message}`;
     render();
   });
+}
+
+function sendServerState() {
+  sendServerEvent({ type: "state", board, current, winner, scores, moves, lastMove });
+}
+
+function leaveServerRoom(message = "未连接") {
+  serverRoom = null;
+  serverSeq = 0;
+  serverPolling = false;
+  localRemoteColor = null;
+  connectionRole = null;
+  connectionState = message;
+  if (isServerPage()) {
+    const url = new URL(location.href);
+    url.searchParams.delete("room");
+    history.replaceState(null, "", url);
+  }
 }
 
 function createPeer() {
@@ -697,8 +729,14 @@ async function acceptAnswer() {
 
 newGameButton.addEventListener("click", resetAndShare);
 undoButton.addEventListener("click", undoMove);
-aiToggle.addEventListener("change", resetGame);
-playerColorSelect.addEventListener("change", resetGame);
+aiToggle.addEventListener("change", () => {
+  if (aiToggle.checked && isServerGame()) leaveServerRoom("已退出好友房间");
+  resetGame(true);
+});
+playerColorSelect.addEventListener("change", () => {
+  if (isServerGame()) leaveServerRoom("已退出好友房间");
+  resetGame(true);
+});
 createInviteButton.addEventListener("click", () => createInvite().catch((error) => {
   connectionState = `邀请失败：${error.message}`;
   render();
