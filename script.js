@@ -258,7 +258,7 @@ function render() {
   updateMoves();
   blackScoreText.textContent = scores[black];
   whiteScoreText.textContent = scores[white];
-  undoButton.disabled = moves.length === 0 || aiThinking || undoPending;
+  undoButton.disabled = moves.length === 0 || aiThinking || undoPending || !canUndoNow();
   undoButton.textContent = undoButtonText();
   copyInviteButton.disabled = !inviteCode.value.trim();
   leaveRoomButton.disabled = !isServerGame() && !isRemoteGame();
@@ -277,6 +277,11 @@ function undoButtonText() {
   if (undoPending) return "等待回应";
   if (isServerGame() || isRemoteGame()) return "申请悔棋";
   return "悔棋";
+}
+
+function canUndoNow() {
+  if (isServerGame() || isRemoteGame()) return hasMoveByColor(localRemoteColor);
+  return true;
 }
 
 function roomMetaText() {
@@ -366,6 +371,11 @@ function undoLocalMoves(count = 1) {
 
 function requestRemoteUndo() {
   if (moves.length === 0 || undoPending) return;
+  if (!hasMoveByColor(localRemoteColor)) {
+    connectionState = "你还没有可悔的棋";
+    render();
+    return;
+  }
   if (undoQuota[localRemoteColor] <= 0) {
     connectionState = "本局悔棋次数已用完";
     render();
@@ -378,7 +388,7 @@ function requestRemoteUndo() {
     type: "undo-request",
     requestId: undoRequestId,
     requestedByColor: localRemoteColor,
-    moveText: latestMoveText(),
+    moveText: undoPreviewText(localRemoteColor),
   };
   sendServerEvent(message);
   sendPeerMessage(message);
@@ -390,9 +400,42 @@ function latestMoveText() {
   return move ? `${colorName(move.color)} ${pointToText(move.row, move.col)}` : "最近一步";
 }
 
+function hasMoveByColor(color) {
+  return moves.some((move) => move.color === color);
+}
+
+function undoPreviewText(color) {
+  const index = latestMoveIndexByColor(color);
+  if (index < 0) return "没有可悔的棋";
+  const move = moves[index];
+  const count = moves.length - index;
+  return `撤回到${colorName(color)} ${pointToText(move.row, move.col)}之前，重新由${colorName(color)}落子（撤销${count}步）`;
+}
+
+function latestMoveIndexByColor(color) {
+  for (let i = moves.length - 1; i >= 0; i -= 1) {
+    if (moves[i].color === color) return i;
+  }
+  return -1;
+}
+
+function undoRemoteMoves(requestedColor) {
+  const index = latestMoveIndexByColor(requestedColor);
+  if (index < 0) return false;
+  const count = moves.length - index;
+  undoLocalMoves(count);
+  current = requestedColor;
+  winner = empty;
+  render();
+  return true;
+}
+
 function approveRemoteUndo(requestId, options = {}) {
   const requestedColor = options.requestedColor || opponent(localRemoteColor);
-  undoLocalMoves(1);
+  if (!undoRemoteMoves(requestedColor)) {
+    rejectRemoteUndo(requestId);
+    return;
+  }
   undoQuota[requestedColor] = Math.max(0, undoQuota[requestedColor] - 1);
   winner = empty;
   undoPending = false;
@@ -573,6 +616,7 @@ async function createServerInvite() {
   await joinServerRoom(room.id);
   connectionState = "链接已生成，发给好友";
   resetGame(false);
+  sendServerState();
 }
 
 async function joinServerRoom(roomId) {
@@ -585,6 +629,7 @@ async function joinServerRoom(roomId) {
   serverPlayers = joined.players;
   serverOnline = joined.online || 0;
   localRemoteColor = joined.color === "black" ? black : white;
+  if (joined.state) setGameState(joined.state);
   aiToggle.checked = false;
   connectionState =
     joined.players > 1
@@ -603,15 +648,17 @@ async function pollServer() {
   while (serverRoom) {
     if (isServerSocketOpen()) break;
     try {
-      const data = await api(`/api/rooms/${serverRoom}/events?since=${serverSeq}&wait=0`);
+      const data = await api(
+        `/api/rooms/${serverRoom}/events?since=${serverSeq}&wait=0&client=${encodeURIComponent(serverClientId)}`
+      );
       for (const event of data.events) {
         serverSeq = Math.max(serverSeq, event.seq);
         if (event.senderId === serverClientId) continue;
         handleServerEvent(event);
       }
-      if (data.players > 1) {
+      if (typeof data.players === "number") {
         serverPlayers = data.players;
-        serverOnline = data.online || serverOnline;
+        serverOnline = data.online ?? serverOnline;
         connectionState = `已连接，你执${colorName(localRemoteColor)}`;
         render();
       }
@@ -664,8 +711,9 @@ function handleServerSocketMessage(raw) {
   const message = JSON.parse(raw);
   if (message.type === "hello") {
     serverSeq = Math.max(serverSeq, message.seq || 0);
-    serverPlayers = message.players || serverPlayers;
-    serverOnline = message.online || serverOnline;
+    serverPlayers = message.players ?? serverPlayers;
+    serverOnline = message.online ?? serverOnline;
+    if (message.state) setGameState(message.state);
     connectionState =
       message.players > 1
         ? `实时连接中，你执${colorName(localRemoteColor)}`
@@ -725,12 +773,12 @@ function handleUndoEvent(event) {
 }
 
 function receiveUndoRequest(event) {
-  if (undoPending || moves.length === 0) {
+  if (undoPending || !hasMoveByColor(event.requestedByColor)) {
     rejectRemoteUndo(event.requestId);
     return;
   }
   const requester = event.requestedByColor ? colorName(event.requestedByColor) : "对方";
-  const ok = window.confirm(`${requester}申请悔棋：${event.moveText || latestMoveText()}。是否同意？`);
+  const ok = window.confirm(`${requester}申请悔棋：${event.moveText || undoPreviewText(event.requestedByColor)}。是否同意？`);
   if (ok) {
     approveRemoteUndo(event.requestId, { requestedColor: event.requestedByColor });
   } else {
@@ -739,14 +787,18 @@ function receiveUndoRequest(event) {
 }
 
 function applyServerState(event) {
-  board = event.board;
-  current = event.current;
-  winner = event.winner;
-  scores = event.scores;
-  if (event.undoQuota) undoQuota = event.undoQuota;
-  moves = event.moves;
-  lastMove = event.lastMove;
+  setGameState(event);
   render();
+}
+
+function setGameState(state) {
+  board = state.board;
+  current = state.current;
+  winner = state.winner;
+  scores = state.scores;
+  if (state.undoQuota) undoQuota = state.undoQuota;
+  moves = state.moves;
+  lastMove = state.lastMove;
 }
 
 function sendServerEvent(message) {

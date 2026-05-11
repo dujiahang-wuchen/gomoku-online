@@ -42,12 +42,13 @@ function json(res, status, data) {
 
 function getRoom(id) {
   if (!rooms.has(id)) {
-    rooms.set(id, { id, players: {}, events: [], seq: 0, waiters: [], sockets: new Map() });
+    rooms.set(id, { id, players: {}, events: [], seq: 0, waiters: [], sockets: new Map(), state: null });
   }
   return rooms.get(id);
 }
 
 function publish(room, event) {
+  rememberState(room, event);
   const next = { ...event, seq: ++room.seq, at: Date.now() };
   room.events.push(next);
   room.events = room.events.slice(-300);
@@ -68,7 +69,26 @@ function playerCount(room) {
 }
 
 function activePlayerCount(room) {
-  return Object.values(room.players).filter((player) => player.online).length;
+  const now = Date.now();
+  return Object.values(room.players).filter((player) => player.online || now - (player.lastSeen || 0) < 12_000).length;
+}
+
+function touchPlayer(room, clientId) {
+  if (!room.players[clientId]) return;
+  room.players[clientId].lastSeen = Date.now();
+}
+
+function rememberState(room, event) {
+  if (!event || !event.board) return;
+  room.state = {
+    board: event.board,
+    current: event.current,
+    winner: event.winner,
+    scores: event.scores,
+    undoQuota: event.undoQuota,
+    moves: event.moves,
+    lastMove: event.lastMove,
+  };
 }
 
 function localUrls() {
@@ -111,12 +131,12 @@ const server = http.createServer(async (req, res) => {
             json(res, 403, { error: "房间已有两位在线玩家，请让房主重新创建邀请" });
             return;
           }
-          room.players[clientId] = { ...room.players[offlineClientId], online: false };
+          room.players[clientId] = { ...room.players[offlineClientId], online: false, lastSeen: Date.now() };
           room.sockets.delete(offlineClientId);
           delete room.players[offlineClientId];
         } else {
           const colors = new Set(Object.values(room.players).map((player) => player.color));
-          room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false };
+          room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false, lastSeen: Date.now() };
         }
         publish(room, {
           type: "presence",
@@ -132,6 +152,7 @@ const server = http.createServer(async (req, res) => {
         players: playerCount(room),
         online: activePlayerCount(room),
         seq: room.seq,
+        state: room.state,
       });
       return;
     }
@@ -146,6 +167,7 @@ const server = http.createServer(async (req, res) => {
           json(res, 403, { error: "not in room" });
           return;
         }
+        touchPlayer(room, body.senderId);
         publish(room, body);
         json(res, 200, { ok: true });
         return;
@@ -153,6 +175,8 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === "GET") {
         const since = Number(url.searchParams.get("since") || 0);
+        const clientId = String(url.searchParams.get("client") || "");
+        touchPlayer(room, clientId);
         const shouldWait = url.searchParams.get("wait") !== "0";
         let events = room.events.filter((event) => event.seq > since);
         if (shouldWait && !events.length) {
@@ -229,6 +253,7 @@ wss.on("connection", (ws) => {
   if (room.sockets.has(ws.clientId)) room.sockets.get(ws.clientId).close();
   room.sockets.set(ws.clientId, ws);
   player.online = true;
+  touchPlayer(room, ws.clientId);
 
   ws.send(
     JSON.stringify({
@@ -236,6 +261,7 @@ wss.on("connection", (ws) => {
       seq: room.seq,
       players: playerCount(room),
       online: activePlayerCount(room),
+      state: room.state,
     })
   );
   publish(room, {
@@ -249,6 +275,7 @@ wss.on("connection", (ws) => {
     try {
       const message = JSON.parse(raw.toString());
       if (message.senderId !== ws.clientId || !room.players[ws.clientId]) return;
+      touchPlayer(room, ws.clientId);
       publish(room, message);
     } catch {
       ws.send(JSON.stringify({ type: "error", error: "invalid message" }));
