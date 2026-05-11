@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "cloudflared": "^0.7.1",
-    "localtunnel": "^2.0.2"
+    "localtunnel": "^2.0.2",
+    "ws": "^8.20.0"
   }
 }

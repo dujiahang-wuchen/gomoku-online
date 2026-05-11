@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
+const { WebSocketServer } = require("ws");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
@@ -41,7 +42,7 @@ function json(res, status, data) {
 
 function getRoom(id) {
   if (!rooms.has(id)) {
-    rooms.set(id, { id, players: {}, events: [], seq: 0, waiters: [] });
+    rooms.set(id, { id, players: {}, events: [], seq: 0, waiters: [], sockets: new Map() });
   }
   return rooms.get(id);
 }
@@ -51,10 +52,23 @@ function publish(room, event) {
   room.events.push(next);
   room.events = room.events.slice(-300);
   for (const waiter of room.waiters.splice(0)) waiter();
+  broadcast(room, { type: "events", events: [next], seq: room.seq, players: playerCount(room), online: activePlayerCount(room) });
+  return next;
+}
+
+function broadcast(room, payload) {
+  const data = JSON.stringify(payload);
+  for (const socket of room.sockets.values()) {
+    if (socket.readyState === 1) socket.send(data);
+  }
 }
 
 function playerCount(room) {
   return Object.keys(room.players).length;
+}
+
+function activePlayerCount(room) {
+  return Object.values(room.players).filter((player) => player.online).length;
 }
 
 function localUrls() {
@@ -89,8 +103,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (!room.players[clientId]) {
+        if (playerCount(room) >= 2) {
+          json(res, 403, { error: "room is full" });
+          return;
+        }
         const colors = new Set(Object.values(room.players).map((player) => player.color));
-        room.players[clientId] = { color: colors.has("black") ? "white" : "black" };
+        room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false };
         publish(room, { type: "presence", senderId: clientId, players: playerCount(room) });
       }
 
@@ -132,7 +150,7 @@ const server = http.createServer(async (req, res) => {
           });
           events = room.events.filter((event) => event.seq > since);
         }
-        json(res, 200, { events, seq: room.seq, players: playerCount(room) });
+        json(res, 200, { events, seq: room.seq, players: playerCount(room), online: activePlayerCount(room) });
         return;
       }
     }
@@ -164,6 +182,75 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     json(res, 500, { error: error.message });
   }
+});
+
+const wss = new WebSocketServer({ noServer: true });
+
+server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname !== "/ws") {
+    socket.destroy();
+    return;
+  }
+
+  const roomId = url.searchParams.get("room");
+  const clientId = url.searchParams.get("client");
+  const room = roomId ? rooms.get(roomId) : null;
+  if (!room || !clientId || !room.players[clientId]) {
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.roomId = roomId;
+    ws.clientId = clientId;
+    wss.emit("connection", ws);
+  });
+});
+
+wss.on("connection", (ws) => {
+  const room = getRoom(ws.roomId);
+  const player = room.players[ws.clientId];
+  if (room.sockets.has(ws.clientId)) room.sockets.get(ws.clientId).close();
+  room.sockets.set(ws.clientId, ws);
+  player.online = true;
+
+  ws.send(
+    JSON.stringify({
+      type: "hello",
+      seq: room.seq,
+      players: playerCount(room),
+      online: activePlayerCount(room),
+    })
+  );
+  publish(room, {
+    type: "presence",
+    senderId: ws.clientId,
+    players: playerCount(room),
+    online: activePlayerCount(room),
+  });
+
+  ws.on("message", (raw) => {
+    try {
+      const message = JSON.parse(raw.toString());
+      if (message.senderId !== ws.clientId || !room.players[ws.clientId]) return;
+      publish(room, message);
+    } catch {
+      ws.send(JSON.stringify({ type: "error", error: "invalid message" }));
+    }
+  });
+
+  ws.on("close", () => {
+    if (room.sockets.get(ws.clientId) !== ws) return;
+    room.sockets.delete(ws.clientId);
+    if (room.players[ws.clientId]) room.players[ws.clientId].online = false;
+    publish(room, {
+      type: "presence",
+      senderId: ws.clientId,
+      players: playerCount(room),
+      online: activePlayerCount(room),
+    });
+  });
 });
 
 server.listen(port, () => {

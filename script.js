@@ -40,6 +40,7 @@ let connectionState = "未连接";
 let serverRoom = null;
 let serverSeq = 0;
 let serverPolling = false;
+let serverSocket = null;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 
 if (!serverClientId) {
@@ -496,13 +497,17 @@ async function joinServerRoom(roomId) {
       ? `已连接，你执${colorName(localRemoteColor)}`
       : `房间已创建，你执${colorName(localRemoteColor)}`;
   render();
-  pollServer();
+  connectServerSocket();
+  window.setTimeout(() => {
+    if (!isServerSocketOpen()) pollServer();
+  }, 900);
 }
 
 async function pollServer() {
   if (serverPolling || !serverRoom) return;
   serverPolling = true;
   while (serverRoom) {
+    if (isServerSocketOpen()) break;
     try {
       const data = await api(`/api/rooms/${serverRoom}/events?since=${serverSeq}&wait=0`);
       for (const event of data.events) {
@@ -524,6 +529,60 @@ async function pollServer() {
   serverPolling = false;
 }
 
+function connectServerSocket() {
+  if (!("WebSocket" in window) || !serverRoom) return;
+  if (serverSocket) serverSocket.close();
+
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const socketUrl = `${protocol}//${location.host}/ws?room=${encodeURIComponent(serverRoom)}&client=${encodeURIComponent(serverClientId)}`;
+  serverSocket = new WebSocket(socketUrl);
+
+  serverSocket.addEventListener("open", () => {
+    connectionState = `实时连接中，你执${colorName(localRemoteColor)}`;
+    render();
+  });
+
+  serverSocket.addEventListener("message", (event) => {
+    handleServerSocketMessage(event.data);
+  });
+
+  serverSocket.addEventListener("close", () => {
+    if (!serverRoom) return;
+    connectionState = "实时连接断开，使用备用同步";
+    render();
+    pollServer();
+  });
+
+  serverSocket.addEventListener("error", () => {
+    if (!serverRoom) return;
+    connectionState = "实时连接异常，使用备用同步";
+    render();
+  });
+}
+
+function isServerSocketOpen() {
+  return Boolean(serverSocket && serverSocket.readyState === 1);
+}
+
+function handleServerSocketMessage(raw) {
+  const message = JSON.parse(raw);
+  if (message.type === "hello") {
+    serverSeq = Math.max(serverSeq, message.seq || 0);
+    connectionState =
+      message.players > 1
+        ? `实时连接中，你执${colorName(localRemoteColor)}`
+        : `房间已创建，你执${colorName(localRemoteColor)}`;
+    render();
+    return;
+  }
+  if (message.type !== "events") return;
+  for (const event of message.events) {
+    serverSeq = Math.max(serverSeq, event.seq);
+    if (event.senderId === serverClientId) continue;
+    handleServerEvent(event);
+  }
+}
+
 function pollDelay(eventCount) {
   if (document.hidden) return 1000;
   return eventCount ? 80 : 180;
@@ -534,8 +593,9 @@ function handleServerEvent(event) {
   if (event.type === "reset") resetGame(true);
   if (event.type === "state") applyServerState(event);
   if (event.type === "presence") {
-    connectionState =
-      event.players > 1 ? `已连接，你执${colorName(localRemoteColor)}` : connectionState;
+    connectionState = event.players > 1
+      ? `${event.online > 1 ? "实时连接中" : "等待好友重连"}，你执${colorName(localRemoteColor)}`
+      : connectionState;
     render();
   }
 }
@@ -552,9 +612,14 @@ function applyServerState(event) {
 
 function sendServerEvent(message) {
   if (!serverRoom) return;
+  const payload = JSON.stringify({ ...message, senderId: serverClientId });
+  if (isServerSocketOpen()) {
+    serverSocket.send(payload);
+    return;
+  }
   api(`/api/rooms/${serverRoom}/events`, {
     method: "POST",
-    body: JSON.stringify({ ...message, senderId: serverClientId }),
+    body: payload,
   }).catch((error) => {
     connectionState = `发送失败：${error.message}`;
     render();
@@ -566,6 +631,8 @@ function sendServerState() {
 }
 
 function leaveServerRoom(message = "未连接") {
+  if (serverSocket) serverSocket.close();
+  serverSocket = null;
   serverRoom = null;
   serverSeq = 0;
   serverPolling = false;
