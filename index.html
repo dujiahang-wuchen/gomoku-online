@@ -94,6 +94,18 @@
       </aside>
     </main>
 
+    <div id="winnerDialog" class="winner-dialog" hidden>
+      <div class="winner-box" role="dialog" aria-modal="true" aria-labelledby="winnerTitle">
+        <p class="label">本局结束</p>
+        <h2 id="winnerTitle">黑棋胜利</h2>
+        <p id="winnerMessage" class="winner-message">棋盘会保留，方便复盘最后局面。</p>
+        <div class="winner-actions">
+          <button id="winnerRematch" type="button">再来一局</button>
+          <button id="winnerClose" class="secondary-button" type="button">先看看</button>
+        </div>
+      </div>
+    </div>
+
     <script src="./script.js"></script>
   </body>
 </html>

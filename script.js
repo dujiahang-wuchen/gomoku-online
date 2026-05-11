@@ -19,6 +19,11 @@ const inviteCode = document.querySelector("#inviteCode");
 const answerCode = document.querySelector("#answerCode");
 const connectionText = document.querySelector("#connectionText");
 const roomMeta = document.querySelector("#roomMeta");
+const winnerDialog = document.querySelector("#winnerDialog");
+const winnerTitle = document.querySelector("#winnerTitle");
+const winnerMessage = document.querySelector("#winnerMessage");
+const winnerRematchButton = document.querySelector("#winnerRematch");
+const winnerCloseButton = document.querySelector("#winnerClose");
 
 const size = 15;
 const cell = boardCanvas.width / (size + 1);
@@ -49,6 +54,7 @@ let serverPlayers = 0;
 let serverOnline = 0;
 let undoRequestId = null;
 let undoPending = false;
+let winnerPromptDismissed = false;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 
 if (!serverClientId) {
@@ -208,8 +214,10 @@ function place(row, col, color, options = {}) {
   if (hasFive(row, col, color)) {
     winner = color;
     scores[color] += 1;
+    winnerPromptDismissed = false;
   } else if (moves.length === size * size) {
     winner = -1;
+    winnerPromptDismissed = false;
   } else {
     current = opponent(current);
   }
@@ -271,6 +279,7 @@ function render() {
     peer.signalingState !== "have-local-offer";
   connectionText.textContent = connectionState;
   roomMeta.textContent = roomMetaText();
+  updateWinnerPrompt();
 }
 
 function undoButtonText() {
@@ -290,6 +299,25 @@ function roomMetaText() {
   }
   if (isRemoteGame()) return `点对点连接 · 你执${colorName(localRemoteColor)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   return isServerPage() ? "创建邀请后可复制链接发给好友" : "本地模式可使用邀请码连接";
+}
+
+function updateWinnerPrompt() {
+  if (!winner || winnerPromptDismissed) {
+    winnerDialog.hidden = true;
+    return;
+  }
+
+  const title = winner === -1 ? "平局" : `${colorName(winner)}胜利`;
+  winnerTitle.textContent = title;
+  winnerMessage.textContent = isServerGame() || isRemoteGame()
+    ? "棋盘已保留，双方都能看到最后局面。点“再来一局”会同步开启新局。"
+    : "棋盘已保留，方便复盘最后局面。点“再来一局”即可重新开始。";
+  winnerDialog.hidden = false;
+}
+
+function dismissWinnerPrompt() {
+  winnerPromptDismissed = true;
+  winnerDialog.hidden = true;
 }
 
 function updateStatus() {
@@ -335,6 +363,7 @@ function resetGame(keepScore = true) {
   aiThinking = false;
   undoPending = false;
   undoRequestId = null;
+  winnerPromptDismissed = false;
   if (!keepScore) scores = { [black]: 0, [white]: 0 };
   render();
   queueAiMove();
@@ -441,6 +470,7 @@ function approveRemoteUndo(requestId, options = {}) {
   undoPending = false;
   undoRequestId = null;
   connectionState = "悔棋已同意";
+  winnerPromptDismissed = false;
   render();
   if (!options.remote) {
     const message = { type: "undo-accepted", requestId, board, current, winner, scores, undoQuota, moves, lastMove };
@@ -792,6 +822,7 @@ function applyServerState(event) {
 }
 
 function setGameState(state) {
+  const previousWinner = winner;
   board = state.board;
   current = state.current;
   winner = state.winner;
@@ -799,6 +830,8 @@ function setGameState(state) {
   if (state.undoQuota) undoQuota = state.undoQuota;
   moves = state.moves;
   lastMove = state.lastMove;
+  if (winner && winner !== previousWinner) winnerPromptDismissed = false;
+  if (!winner) winnerPromptDismissed = false;
 }
 
 function sendServerEvent(message) {
@@ -1034,6 +1067,11 @@ async function acceptAnswer() {
 
 newGameButton.addEventListener("click", resetAndShare);
 undoButton.addEventListener("click", undoMove);
+winnerRematchButton.addEventListener("click", resetAndShare);
+winnerCloseButton.addEventListener("click", dismissWinnerPrompt);
+winnerDialog.addEventListener("click", (event) => {
+  if (event.target === winnerDialog) dismissWinnerPrompt();
+});
 aiToggle.addEventListener("change", () => {
   if (aiToggle.checked && isServerGame()) leaveServerRoom("已退出好友房间");
   resetGame(true);

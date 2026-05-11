@@ -166,6 +166,17 @@ button:disabled {
   opacity: 0.48;
 }
 
+.secondary-button {
+  color: var(--accent-dark);
+  background: #fffaf0;
+  border: 1px solid rgba(47, 125, 104, 0.28);
+}
+
+.secondary-button:hover {
+  color: #fff;
+  background: var(--accent-dark);
+}
+
 .settings {
   display: grid;
   gap: 12px;
@@ -294,6 +305,50 @@ textarea {
   padding: 4px 0;
 }
 
+.winner-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(18, 25, 28, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.winner-dialog[hidden] {
+  display: none;
+}
+
+.winner-box {
+  width: min(420px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  padding: 22px;
+  background: rgba(255, 252, 245, 0.96);
+  box-shadow: 0 24px 70px rgba(10, 16, 18, 0.28);
+}
+
+.winner-box h2 {
+  margin: 4px 0 8px;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.winner-message {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.winner-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 @media (max-width: 900px) {
   .app {
     width: min(100vw - 16px, 760px);
@@ -373,5 +428,13 @@ textarea {
 
   .moves {
     max-height: 140px;
+  }
+
+  .winner-box {
+    padding: 18px;
+  }
+
+  .winner-box h2 {
+    font-size: 28px;
   }
 }
