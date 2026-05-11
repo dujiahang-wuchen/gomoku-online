@@ -98,6 +98,7 @@ function rememberState(room, event) {
     undoQuota: event.undoQuota,
     moves: event.moves,
     lastMove: event.lastMove,
+    winningLine: event.winningLine || [],
   };
 }
 

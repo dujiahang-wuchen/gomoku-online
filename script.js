@@ -2,6 +2,7 @@ const boardCanvas = document.querySelector("#board");
 const ctx = boardCanvas.getContext("2d");
 const statusText = document.querySelector("#statusText");
 const turnStone = document.querySelector("#turnStone");
+const playerBadge = document.querySelector("#playerBadge");
 const newGameButton = document.querySelector("#newGame");
 const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
@@ -40,6 +41,7 @@ let moves = [];
 let scores = { [black]: 0, [white]: 0 };
 let undoQuota = { [black]: 3, [white]: 3 };
 let lastMove = null;
+let winningLine = [];
 let aiThinking = false;
 let peer = null;
 let channel = null;
@@ -139,6 +141,7 @@ function drawBoard() {
     }
   }
 
+  if (winningLine.length) drawWinningLine();
   if (lastMove) drawLastMove(lastMove.row, lastMove.col);
 }
 
@@ -194,6 +197,31 @@ function drawLastMove(row, col) {
   ctx.stroke();
 }
 
+function drawWinningLine() {
+  const first = winningLine[0];
+  const last = winningLine[winningLine.length - 1];
+  if (!first || !last) return;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(244, 211, 94, 0.92)";
+  ctx.lineWidth = 10;
+  ctx.shadowColor = "rgba(244, 211, 94, 0.5)";
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.moveTo(origin + first.col * cell, origin + first.row * cell);
+  ctx.lineTo(origin + last.col * cell, origin + last.row * cell);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(244, 211, 94, 0.95)";
+  for (const point of winningLine) {
+    ctx.beginPath();
+    ctx.arc(origin + point.col * cell, origin + point.row * cell, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function getCell(event) {
   const rect = boardCanvas.getBoundingClientRect();
   const scale = boardCanvas.width / rect.width;
@@ -218,6 +246,7 @@ function place(row, col, color, options = {}) {
 
   if (hasFive(row, col, color)) {
     winner = color;
+    winningLine = findWinningLine(row, col, color);
     scores[color] += 1;
     prepareWinnerPrompt();
   } else if (moves.length === size * size) {
@@ -243,6 +272,36 @@ function hasFive(row, col, color) {
     [1, 1],
     [1, -1],
   ].some(([dr, dc]) => countLine(row, col, dr, dc, color) >= 5);
+}
+
+function findWinningLine(row, col, color) {
+  const directions = [
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [1, -1],
+  ];
+  for (const [dr, dc] of directions) {
+    const line = [
+      ...collectDirection(row, col, -dr, -dc, color).reverse(),
+      { row, col },
+      ...collectDirection(row, col, dr, dc, color),
+    ];
+    if (line.length >= 5) return line;
+  }
+  return [];
+}
+
+function collectDirection(row, col, dr, dc, color) {
+  const points = [];
+  let r = row + dr;
+  let c = col + dc;
+  while (r >= 0 && r < size && c >= 0 && c < size && board[r][c] === color) {
+    points.push({ row: r, col: c });
+    r += dr;
+    c += dc;
+  }
+  return points;
 }
 
 function countLine(row, col, dr, dc, color) {
@@ -288,6 +347,7 @@ function render() {
     peer.signalingState !== "have-local-offer";
   connectionText.textContent = connectionState;
   roomMeta.textContent = roomMetaText();
+  updatePlayerBadge();
   updateWinnerPrompt();
 }
 
@@ -308,6 +368,24 @@ function roomMetaText() {
   }
   if (isRemoteGame()) return `点对点连接 · 你执${colorName(localRemoteColor)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   return isServerPage() ? "创建邀请后可复制链接发给好友" : "本地模式可使用邀请码连接";
+}
+
+function updatePlayerBadge() {
+  const color = localPlayerColor();
+  if (!color) {
+    playerBadge.hidden = true;
+    return;
+  }
+  const isTurn = !winner && current === color;
+  playerBadge.hidden = false;
+  playerBadge.textContent = isTurn ? `轮到你下${colorName(color)}` : `你执${colorName(color)}`;
+  playerBadge.classList.toggle("white", color === white);
+}
+
+function localPlayerColor() {
+  if (isServerGame() || isRemoteGame()) return localRemoteColor;
+  if (aiToggle.checked) return playerColor();
+  return null;
 }
 
 function updateWinnerPrompt() {
@@ -398,6 +476,7 @@ function resetGame(keepScore = true) {
   moves = [];
   undoQuota = { [black]: 3, [white]: 3 };
   lastMove = null;
+  winningLine = [];
   aiThinking = false;
   undoPending = false;
   undoRequestId = null;
@@ -468,6 +547,7 @@ function undoLocalMoves(count = 1) {
   winner = empty;
   current = moves.length ? opponent(moves[moves.length - 1].color) : black;
   lastMove = moves.at(-1) ? { row: moves.at(-1).row, col: moves.at(-1).col } : null;
+  winningLine = [];
   winnerPromptReady = false;
   clearWinnerPromptTimer();
   render();
@@ -548,7 +628,18 @@ function approveRemoteUndo(requestId, options = {}) {
   winnerPromptDismissed = false;
   render();
   if (!options.remote) {
-    const message = { type: "undo-accepted", requestId, board, current, winner, scores, undoQuota, moves, lastMove };
+    const message = {
+      type: "undo-accepted",
+      requestId,
+      board,
+      current,
+      winner,
+      scores,
+      undoQuota,
+      moves,
+      lastMove,
+      winningLine,
+    };
     sendServerEvent(message);
     sendServerState();
     sendPeerMessage(message);
@@ -907,6 +998,7 @@ function approveRematch(requestId) {
     undoQuota,
     moves,
     lastMove,
+    winningLine,
   };
   sendServerEvent(message);
   sendPeerMessage(message);
@@ -972,6 +1064,7 @@ function setGameState(state) {
   if (state.undoQuota) undoQuota = state.undoQuota;
   moves = state.moves;
   lastMove = state.lastMove;
+  winningLine = state.winningLine || [];
   if (winner && winner !== previousWinner) prepareWinnerPrompt();
   if (!winner) {
     winnerPromptDismissed = false;
@@ -997,7 +1090,7 @@ function sendServerEvent(message) {
 }
 
 function sendServerState() {
-  sendServerEvent({ type: "state", board, current, winner, scores, undoQuota, moves, lastMove });
+  sendServerEvent({ type: "state", board, current, winner, scores, undoQuota, moves, lastMove, winningLine });
 }
 
 function leaveServerRoom(message = "未连接") {
@@ -1083,7 +1176,9 @@ function setupChannel(nextChannel) {
     connectionState = `已连接，你执${colorName(localRemoteColor)}`;
     aiToggle.checked = false;
     render();
-    if (localRemoteColor === black) sendPeerMessage({ type: "sync", board, current, winner, scores, undoQuota, moves, lastMove });
+    if (localRemoteColor === black) {
+      sendPeerMessage({ type: "sync", board, current, winner, scores, undoQuota, moves, lastMove, winningLine });
+    }
   });
   channel.addEventListener("close", () => {
     connectionState = "连接已断开";
@@ -1107,6 +1202,7 @@ function applyPeerSync(message) {
   if (message.undoQuota) undoQuota = message.undoQuota;
   moves = message.moves;
   lastMove = message.lastMove;
+  winningLine = message.winningLine || [];
   render();
 }
 

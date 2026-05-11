@@ -134,6 +134,29 @@ h1 {
   font-weight: 800;
 }
 
+.player-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin: 8px 0 0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: #fff;
+  background: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.player-badge[hidden] {
+  display: none;
+}
+
+.player-badge.white {
+  color: var(--ink);
+  background: #fffaf0;
+  border: 1px solid rgba(26, 31, 35, 0.18);
+}
+
 .controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -398,6 +421,11 @@ textarea {
 
   .status {
     font-size: 19px;
+  }
+
+  .player-badge {
+    min-height: 30px;
+    font-size: 14px;
   }
 
   h1 {
