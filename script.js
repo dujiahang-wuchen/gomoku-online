@@ -15,6 +15,7 @@ const moveList = document.querySelector("#moveList");
 const createInviteButton = document.querySelector("#createInvite");
 const joinInviteButton = document.querySelector("#joinInvite");
 const copyInviteButton = document.querySelector("#copyInvite");
+const syncRoomButton = document.querySelector("#syncRoom");
 const leaveRoomButton = document.querySelector("#leaveRoom");
 const acceptAnswerButton = document.querySelector("#acceptAnswer");
 const inviteCode = document.querySelector("#inviteCode");
@@ -374,6 +375,7 @@ function render() {
   winnerRematchButton.disabled = rematchPending;
   winnerRematchButton.textContent = rematchPending ? "等待回应" : "再来一局";
   copyInviteButton.disabled = !inviteCode.value.trim();
+  syncRoomButton.disabled = !canSyncRoom();
   leaveRoomButton.disabled = !isServerGame() && !isRemoteGame();
   acceptAnswerButton.disabled =
     isServerPage() ||
@@ -399,12 +401,31 @@ function canUndoNow() {
   return true;
 }
 
+function canSyncRoom() {
+  return isServerGame() || isRemoteGame();
+}
+
 function roomMetaText() {
   if (isServerGame()) {
-    return `房间 ${serverRoom} · 在线 ${serverOnline}/${Math.max(serverPlayers, 2)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
+    return `房间 ${serverRoom} · ${serverPresenceText()} · 在线 ${serverOnline}/${Math.max(serverPlayers, 2)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   }
   if (isRemoteGame()) return `点对点连接 · 你执${colorName(localRemoteColor)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   return isServerPage() ? "创建邀请后可复制链接发给好友" : "本地模式可使用邀请码连接";
+}
+
+function serverPresenceText() {
+  if (serverPlayers < 2) return "等待好友加入";
+  if (serverOnline > 1) return isServerSocketOpen() ? "实时同步" : "备用同步";
+  return "对方离线";
+}
+
+function serverConnectionText(options = {}) {
+  const online = options.online ?? serverOnline;
+  const players = options.players ?? serverPlayers;
+  const mode = options.mode || (isServerSocketOpen() ? "实时同步" : "备用同步");
+  if (players < 2) return `房间已创建，等待好友打开链接，你执${colorName(localRemoteColor)}`;
+  if (online > 1) return `${mode}中，你执${colorName(localRemoteColor)}`;
+  return `对方离线，等待重连，你执${colorName(localRemoteColor)}`;
 }
 
 function updatePlayerBadge() {
@@ -978,10 +999,7 @@ async function joinServerRoom(roomId) {
     }
   }
   aiToggle.checked = false;
-  connectionState =
-    joined.players > 1
-      ? `已连接，你执${colorName(localRemoteColor)}`
-      : `房间已创建，你执${colorName(localRemoteColor)}`;
+  connectionState = serverConnectionText({ players: joined.players, online: joined.online, mode: "备用同步" });
   if (joined.players > 1) showNotice("已加入好友房间");
   render();
   connectServerSocket();
@@ -1009,9 +1027,9 @@ async function pollServer() {
         serverOnline = data.online ?? serverOnline;
         if (serverOnline > 1) {
           if (isLeaveNoticeState()) showNotice("好友已重新加入房间");
-          connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+          connectionState = serverConnectionText({ mode: "备用同步" });
         } else if (!isLeaveNoticeState()) {
-          connectionState = `等待好友重连，你执${colorName(localRemoteColor)}`;
+          connectionState = serverConnectionText({ mode: "备用同步" });
         }
         render();
       }
@@ -1034,7 +1052,7 @@ function connectServerSocket() {
   serverSocket = new WebSocket(socketUrl);
 
   serverSocket.addEventListener("open", () => {
-    connectionState = `实时连接中，你执${colorName(localRemoteColor)}`;
+    connectionState = serverConnectionText({ mode: "实时同步" });
     render();
   });
 
@@ -1044,14 +1062,14 @@ function connectServerSocket() {
 
   serverSocket.addEventListener("close", () => {
     if (!serverRoom) return;
-    connectionState = "实时连接断开，使用备用同步";
+    connectionState = "实时连接断开，已切换备用同步";
     render();
     pollServer();
   });
 
   serverSocket.addEventListener("error", () => {
     if (!serverRoom) return;
-    connectionState = "实时连接异常，使用备用同步";
+    connectionState = "实时连接异常，已切换备用同步";
     render();
   });
 }
@@ -1068,10 +1086,7 @@ function handleServerSocketMessage(raw) {
     serverPlayers = message.players ?? serverPlayers;
     serverOnline = message.online ?? serverOnline;
     if (message.state) setGameState(message.state);
-    connectionState =
-      message.players > 1
-        ? `实时连接中，你执${colorName(localRemoteColor)}`
-        : `房间已创建，你执${colorName(localRemoteColor)}`;
+    connectionState = serverConnectionText({ players: message.players, online: message.online, mode: "实时同步" });
     if (hadLeaveNotice && serverOnline > 1) showNotice("好友已重新加入房间");
     render();
     return;
@@ -1123,7 +1138,7 @@ function handleServerEvent(event) {
       return;
     }
     connectionState = event.players > 1
-      ? `${event.online > 1 ? "实时连接中" : "等待好友重连"}，你执${colorName(localRemoteColor)}`
+      ? serverConnectionText({ players: event.players, online: event.online, mode: isServerSocketOpen() ? "实时同步" : "备用同步" })
       : connectionState;
     render();
   }
@@ -1312,6 +1327,57 @@ function notifyPageClosing() {
   notifyServerLeave({ beacon: true, keepalive: true, reason: "close" });
 }
 
+async function syncRoomState() {
+  if (isServerGame()) {
+    await syncServerRoomState();
+    return;
+  }
+  if (isRemoteGame()) syncPeerRoomState();
+}
+
+async function syncServerRoomState() {
+  connectionState = "正在从服务器同步棋局";
+  render();
+  try {
+    const data = await api(
+      `/api/rooms/${serverRoom}/events?since=${serverSeq}&wait=0&client=${encodeURIComponent(serverClientId)}`
+    );
+    for (const event of data.events || []) {
+      serverSeq = Math.max(serverSeq, event.seq);
+      if (event.senderId === serverClientId) continue;
+      handleServerEvent(event);
+    }
+    serverSeq = Math.max(serverSeq, data.seq || serverSeq);
+    serverPlayers = data.players ?? serverPlayers;
+    serverOnline = data.online ?? serverOnline;
+    if (data.state) {
+      setGameState(data.state);
+      showNotice("棋局已同步");
+    } else {
+      showNotice("房间状态已同步");
+    }
+    connectionState =
+      serverOnline > 1
+        ? `已同步最新棋局，${isServerSocketOpen() ? "实时同步中" : "备用同步中"}，你执${colorName(localRemoteColor)}`
+        : `已同步棋局，对方离线，等待重连，你执${colorName(localRemoteColor)}`;
+  } catch (error) {
+    connectionState = `同步失败：${error.message}`;
+  }
+  render();
+}
+
+function syncPeerRoomState() {
+  if (!channel || channel.readyState !== "open") {
+    connectionState = "连接已断开，暂时无法同步";
+    render();
+    return;
+  }
+  sendPeerMessage({ type: "sync-request" });
+  connectionState = "已请求对方同步棋局";
+  showNotice("已请求同步棋局");
+  render();
+}
+
 function sendServerState() {
   saveRoomSnapshot();
   sendServerEvent({ type: "state", ...currentGameState() });
@@ -1370,7 +1436,7 @@ function createPeer() {
   nextPeer.addEventListener("connectionstatechange", () => {
     if (nextPeer.connectionState === "connected") {
       connectionFailed = false;
-      connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+      connectionState = `点对点已连接，你执${colorName(localRemoteColor)}`;
     } else if (nextPeer.connectionState === "failed") {
       connectionFailed = true;
       connectionState = "直连失败，请重新创建邀请";
@@ -1401,11 +1467,11 @@ function closePeer() {
 function setupChannel(nextChannel) {
   channel = nextChannel;
   channel.addEventListener("open", () => {
-    connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+    connectionState = `点对点已连接，你执${colorName(localRemoteColor)}`;
     aiToggle.checked = false;
     render();
     if (localRemoteColor === black) {
-      sendPeerMessage({ type: "sync", board, current, winner, scores, undoQuota, moves, lastMove, winningLine });
+      sendPeerMessage({ type: "sync", ...currentGameState() });
     }
   });
   channel.addEventListener("close", () => {
@@ -1418,6 +1484,11 @@ function setupChannel(nextChannel) {
     if (handleUndoEvent(message)) return;
     if (message.type === "move") place(message.row, message.col, message.color, { remote: true });
     if (message.type === "reset") resetGame(true);
+    if (message.type === "sync-request") {
+      sendPeerMessage({ type: "sync", ...currentGameState() });
+      connectionState = "已发送棋局同步";
+      render();
+    }
     if (message.type === "sync") applyPeerSync(message);
   });
 }
@@ -1431,6 +1502,8 @@ function applyPeerSync(message) {
   moves = message.moves;
   lastMove = message.lastMove;
   winningLine = message.winningLine || [];
+  connectionState = `棋局已同步，你执${colorName(localRemoteColor)}`;
+  showNotice("棋局已同步");
   render();
 }
 
@@ -1566,6 +1639,10 @@ createInviteButton.addEventListener("click", () => createInvite().catch((error) 
   render();
 }));
 copyInviteButton.addEventListener("click", () => copyInviteLink());
+syncRoomButton.addEventListener("click", () => syncRoomState().catch((error) => {
+  connectionState = `同步失败：${error.message}`;
+  render();
+}));
 leaveRoomButton.addEventListener("click", () => {
   if (isServerGame()) leaveServerRoom("已退出好友房间");
   if (isRemoteGame()) {

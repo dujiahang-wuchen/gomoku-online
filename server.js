@@ -240,7 +240,7 @@ const server = http.createServer(async (req, res) => {
           });
           events = room.events.filter((event) => event.seq > since);
         }
-        json(res, 200, { events, seq: room.seq, players: playerCount(room), online: activePlayerCount(room) });
+        json(res, 200, { events, seq: room.seq, players: playerCount(room), online: activePlayerCount(room), state: room.state });
         return;
       }
     }
