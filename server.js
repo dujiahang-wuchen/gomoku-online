@@ -42,7 +42,16 @@ function json(res, status, data) {
 
 function getRoom(id) {
   if (!rooms.has(id)) {
-    rooms.set(id, { id, players: {}, events: [], seq: 0, waiters: [], sockets: new Map(), state: null });
+    rooms.set(id, {
+      id,
+      players: {},
+      events: [],
+      seq: 0,
+      waiters: [],
+      sockets: new Map(),
+      state: null,
+      hostColor: "black",
+    });
   }
   return rooms.get(id);
 }
@@ -91,6 +100,19 @@ function rememberState(room, event) {
   };
 }
 
+function cleanHostColor(value) {
+  return ["black", "white", "random"].includes(value) ? value : "black";
+}
+
+function nextPlayerColor(room) {
+  const colors = new Set(Object.values(room.players).map((player) => player.color));
+  if (!colors.size) {
+    if (room.hostColor === "random") return Math.random() < 0.5 ? "black" : "white";
+    return room.hostColor;
+  }
+  return colors.has("black") ? "white" : "black";
+}
+
 function localUrls() {
   const urls = [`http://localhost:${port}`];
   for (const entry of Object.values(os.networkInterfaces()).flat()) {
@@ -107,7 +129,9 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "POST" && url.pathname === "/api/rooms") {
       const id = crypto.randomBytes(4).toString("hex");
-      getRoom(id);
+      const body = await readBody(req);
+      const room = getRoom(id);
+      room.hostColor = cleanHostColor(body.hostColor);
       json(res, 200, { id });
       return;
     }
@@ -135,8 +159,7 @@ const server = http.createServer(async (req, res) => {
           room.sockets.delete(offlineClientId);
           delete room.players[offlineClientId];
         } else {
-          const colors = new Set(Object.values(room.players).map((player) => player.color));
-          room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false, lastSeen: Date.now() };
+          room.players[clientId] = { color: nextPlayerColor(room), online: false, lastSeen: Date.now() };
         }
         publish(room, {
           type: "presence",

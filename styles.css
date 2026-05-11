@@ -245,6 +245,10 @@ select {
   font-size: 13px;
 }
 
+.room-color-row {
+  min-height: 38px;
+}
+
 .code-field {
   display: grid;
   gap: 6px;

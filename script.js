@@ -7,6 +7,7 @@ const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
 const aiLevelSelect = document.querySelector("#aiLevel");
 const playerColorSelect = document.querySelector("#playerColor");
+const roomColorSelect = document.querySelector("#roomColor");
 const blackScoreText = document.querySelector("#blackScore");
 const whiteScoreText = document.querySelector("#whiteScore");
 const moveList = document.querySelector("#moveList");
@@ -55,6 +56,8 @@ let serverPlayers = 0;
 let serverOnline = 0;
 let undoRequestId = null;
 let undoPending = false;
+let rematchRequestId = null;
+let rematchPending = false;
 let winnerPromptDismissed = false;
 let winnerPromptReady = false;
 let winnerPromptTimer = null;
@@ -269,8 +272,12 @@ function render() {
   updateMoves();
   blackScoreText.textContent = scores[black];
   whiteScoreText.textContent = scores[white];
+  newGameButton.disabled = aiThinking || rematchPending;
+  newGameButton.textContent = rematchPending ? "等待回应" : "新局";
   undoButton.disabled = moves.length === 0 || aiThinking || undoPending || !canUndoNow();
   undoButton.textContent = undoButtonText();
+  winnerRematchButton.disabled = rematchPending;
+  winnerRematchButton.textContent = rematchPending ? "等待回应" : "再来一局";
   copyInviteButton.disabled = !inviteCode.value.trim();
   leaveRoomButton.disabled = !isServerGame() && !isRemoteGame();
   acceptAnswerButton.disabled =
@@ -395,6 +402,8 @@ function resetGame(keepScore = true) {
   aiThinking = false;
   undoPending = false;
   undoRequestId = null;
+  rematchPending = false;
+  rematchRequestId = null;
   winnerPromptDismissed = false;
   winnerPromptReady = false;
   clearWinnerPromptTimer();
@@ -408,6 +417,32 @@ function resetAndShare() {
   sendServerEvent({ type: "reset" });
   sendServerState();
   sendPeerMessage({ type: "reset" });
+}
+
+function newGameAction() {
+  if (isServerGame() || isRemoteGame()) {
+    requestRematch();
+    return;
+  }
+  resetAndShare();
+}
+
+function requestRematch() {
+  if (rematchPending) return;
+  if (isServerGame() && serverPlayers < 2) {
+    resetAndShare();
+    connectionState = "已开始新局";
+    render();
+    return;
+  }
+  rematchRequestId = `${serverClientId}-rematch-${Date.now()}`;
+  rematchPending = true;
+  connectionState = "已发送再来一局申请";
+  dismissWinnerPrompt();
+  const message = { type: "rematch-request", requestId: rematchRequestId };
+  sendServerEvent(message);
+  sendPeerMessage(message);
+  render();
 }
 
 function undoMove() {
@@ -673,7 +708,10 @@ async function api(path, options = {}) {
 }
 
 async function createServerInvite() {
-  const room = await api("/api/rooms", { method: "POST", body: "{}" });
+  const room = await api("/api/rooms", {
+    method: "POST",
+    body: JSON.stringify({ hostColor: roomColorSelect.value }),
+  });
   const joinUrl = new URL(location.href);
   joinUrl.searchParams.set("room", room.id);
   inviteCode.value = joinUrl.href;
@@ -801,6 +839,7 @@ function pollDelay(eventCount) {
 }
 
 function handleServerEvent(event) {
+  if (handleRematchEvent(event)) return;
   if (handleUndoEvent(event)) return;
   if (event.type === "move") place(event.row, event.col, event.color, { remote: true });
   if (event.type === "reset") resetGame(true);
@@ -813,6 +852,59 @@ function handleServerEvent(event) {
       : connectionState;
     render();
   }
+}
+
+function handleRematchEvent(event) {
+  if (event.type === "rematch-request") {
+    receiveRematchRequest(event);
+    return true;
+  }
+  if (event.type === "rematch-accepted") {
+    rematchPending = false;
+    rematchRequestId = null;
+    applyServerState(event);
+    connectionState = "对方同意再来一局";
+    render();
+    return true;
+  }
+  if (event.type === "rematch-rejected") {
+    rematchPending = false;
+    if (rematchRequestId === event.requestId) rematchRequestId = null;
+    connectionState = "对方暂时不想重开";
+    render();
+    return true;
+  }
+  return false;
+}
+
+function receiveRematchRequest(event) {
+  if (rematchPending) {
+    rejectRematch(event.requestId);
+    return;
+  }
+  const ok = window.confirm("对方想再来一局，是否同意？");
+  if (ok) {
+    approveRematch(event.requestId);
+  } else {
+    rejectRematch(event.requestId);
+  }
+}
+
+function approveRematch(requestId) {
+  resetGame(true);
+  connectionState = "已同意再来一局";
+  const message = { type: "rematch-accepted", requestId, board, current, winner, scores, undoQuota, moves, lastMove };
+  sendServerEvent(message);
+  sendPeerMessage(message);
+  render();
+}
+
+function rejectRematch(requestId) {
+  connectionState = "已拒绝再来一局";
+  const message = { type: "rematch-rejected", requestId };
+  sendServerEvent(message);
+  sendPeerMessage(message);
+  render();
 }
 
 function handleUndoEvent(event) {
@@ -985,6 +1077,7 @@ function setupChannel(nextChannel) {
   });
   channel.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
+    if (handleRematchEvent(message)) return;
     if (handleUndoEvent(message)) return;
     if (message.type === "move") place(message.row, message.col, message.color, { remote: true });
     if (message.type === "reset") resetGame(true);
@@ -1105,9 +1198,9 @@ async function acceptAnswer() {
   render();
 }
 
-newGameButton.addEventListener("click", resetAndShare);
+newGameButton.addEventListener("click", newGameAction);
 undoButton.addEventListener("click", undoMove);
-winnerRematchButton.addEventListener("click", resetAndShare);
+winnerRematchButton.addEventListener("click", newGameAction);
 winnerCloseButton.addEventListener("click", dismissWinnerPrompt);
 winnerDialog.addEventListener("click", (event) => {
   if (event.target === winnerDialog) dismissWinnerPrompt();
