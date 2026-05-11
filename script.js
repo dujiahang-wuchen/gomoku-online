@@ -983,7 +983,11 @@ async function pollServer() {
       if (typeof data.players === "number") {
         serverPlayers = data.players;
         serverOnline = data.online ?? serverOnline;
-        connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+        if (serverOnline > 1) {
+          connectionState = `已连接，你执${colorName(localRemoteColor)}`;
+        } else if (connectionState !== "好友已退出房间") {
+          connectionState = `等待好友重连，你执${colorName(localRemoteColor)}`;
+        }
         render();
       }
       await new Promise((resolve) => setTimeout(resolve, pollDelay(data.events.length)));
@@ -1046,6 +1050,8 @@ function handleServerSocketMessage(raw) {
     return;
   }
   if (message.type !== "events") return;
+  serverPlayers = message.players ?? serverPlayers;
+  serverOnline = message.online ?? serverOnline;
   for (const event of message.events) {
     serverSeq = Math.max(serverSeq, event.seq);
     if (event.senderId === serverClientId) continue;
@@ -1064,6 +1070,12 @@ function handleServerEvent(event) {
   if (event.type === "move") place(event.row, event.col, event.color, { remote: true });
   if (event.type === "reset") resetGame(true);
   if (event.type === "state") applyServerState(event);
+  if (event.type === "leave") {
+    serverPlayers = event.players ?? serverPlayers;
+    serverOnline = event.online ?? serverOnline;
+    connectionState = "好友已退出房间";
+    render();
+  }
   if (event.type === "presence") {
     serverPlayers = event.players || serverPlayers;
     serverOnline = event.online ?? serverOnline;
@@ -1218,13 +1230,28 @@ function sendServerEvent(message) {
   });
 }
 
+function notifyServerLeave() {
+  if (!serverRoom) return;
+  const payload = JSON.stringify({ type: "leave", senderId: serverClientId });
+  if (isServerSocketOpen()) {
+    serverSocket.send(payload);
+    return;
+  }
+  api(`/api/rooms/${serverRoom}/events`, {
+    method: "POST",
+    body: payload,
+  }).catch(() => {});
+}
+
 function sendServerState() {
   saveRoomSnapshot();
   sendServerEvent({ type: "state", ...currentGameState() });
 }
 
 function leaveServerRoom(message = "未连接") {
-  if (serverSocket) serverSocket.close();
+  const socket = serverSocket;
+  notifyServerLeave();
+  if (socket) window.setTimeout(() => socket.close(), 60);
   serverSocket = null;
   serverRoom = null;
   serverSeq = 0;
