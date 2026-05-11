@@ -26,6 +26,7 @@ const winnerTitle = document.querySelector("#winnerTitle");
 const winnerMessage = document.querySelector("#winnerMessage");
 const winnerRematchButton = document.querySelector("#winnerRematch");
 const winnerCloseButton = document.querySelector("#winnerClose");
+const noticeToast = document.querySelector("#noticeToast");
 
 const size = 15;
 const cell = boardCanvas.width / (size + 1);
@@ -66,6 +67,7 @@ let rematchPending = false;
 let winnerPromptDismissed = false;
 let winnerPromptReady = false;
 let winnerPromptTimer = null;
+let noticeTimer = null;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 let themeMode = localStorage.getItem("gomokuTheme") || "auto";
 
@@ -447,6 +449,15 @@ function dismissWinnerPrompt() {
   winnerPromptDismissed = true;
   winnerDialog.hidden = true;
   clearWinnerPromptTimer();
+}
+
+function showNotice(message) {
+  window.clearTimeout(noticeTimer);
+  noticeToast.textContent = message;
+  noticeToast.hidden = false;
+  noticeTimer = window.setTimeout(() => {
+    noticeToast.hidden = true;
+  }, 4200);
 }
 
 function prepareWinnerPrompt() {
@@ -1075,7 +1086,9 @@ function handleServerEvent(event) {
   if (event.type === "leave") {
     serverPlayers = event.players ?? serverPlayers;
     serverOnline = event.online ?? serverOnline;
-    connectionState = "好友已退出房间";
+    const message = event.reason === "close" ? "好友关闭了浏览器或离开页面" : "好友已退出房间";
+    connectionState = message;
+    showNotice(message);
     render();
   }
   if (event.type === "presence") {
@@ -1234,7 +1247,7 @@ function sendServerEvent(message) {
 
 function notifyServerLeave(options = {}) {
   if (!serverRoom) return;
-  const payload = JSON.stringify({ type: "leave", senderId: serverClientId });
+  const payload = JSON.stringify({ type: "leave", reason: options.reason || "exit", senderId: serverClientId });
   if (options.beacon && navigator.sendBeacon) {
     navigator.sendBeacon(`/api/rooms/${serverRoom}/events`, payload);
     return;
@@ -1260,7 +1273,7 @@ function notifyServerLeave(options = {}) {
 
 function notifyPageClosing() {
   if (!isServerGame()) return;
-  notifyServerLeave({ beacon: true, keepalive: true });
+  notifyServerLeave({ beacon: true, keepalive: true, reason: "close" });
 }
 
 function sendServerState() {
@@ -1270,7 +1283,7 @@ function sendServerState() {
 
 function leaveServerRoom(message = "未连接") {
   const socket = serverSocket;
-  notifyServerLeave();
+  notifyServerLeave({ reason: "exit" });
   if (socket) window.setTimeout(() => socket.close(), 60);
   serverSocket = null;
   serverRoom = null;
