@@ -961,6 +961,7 @@ async function joinServerRoom(roomId) {
     method: "POST",
     body: JSON.stringify({ clientId: serverClientId }),
   });
+  hideNotice();
   serverRoom = joined.roomId;
   rememberActiveRoom(serverRoom);
   serverSeq = joined.seq;
@@ -1007,6 +1008,7 @@ async function pollServer() {
         serverPlayers = data.players;
         serverOnline = data.online ?? serverOnline;
         if (serverOnline > 1) {
+          if (isLeaveNoticeState()) showNotice("好友已重新加入房间");
           connectionState = `已连接，你执${colorName(localRemoteColor)}`;
         } else if (!isLeaveNoticeState()) {
           connectionState = `等待好友重连，你执${colorName(localRemoteColor)}`;
@@ -1061,6 +1063,7 @@ function isServerSocketOpen() {
 function handleServerSocketMessage(raw) {
   const message = JSON.parse(raw);
   if (message.type === "hello") {
+    const hadLeaveNotice = isLeaveNoticeState();
     serverSeq = Math.max(serverSeq, message.seq || 0);
     serverPlayers = message.players ?? serverPlayers;
     serverOnline = message.online ?? serverOnline;
@@ -1069,13 +1072,19 @@ function handleServerSocketMessage(raw) {
       message.players > 1
         ? `实时连接中，你执${colorName(localRemoteColor)}`
         : `房间已创建，你执${colorName(localRemoteColor)}`;
+    if (hadLeaveNotice && serverOnline > 1) showNotice("好友已重新加入房间");
     render();
     return;
   }
   if (message.type !== "events") return;
-  serverPlayers = message.players ?? serverPlayers;
-  serverOnline = message.online ?? serverOnline;
-  for (const event of message.events) {
+  const events = message.events || [];
+  if (!events.length) {
+    serverPlayers = message.players ?? serverPlayers;
+    serverOnline = message.online ?? serverOnline;
+    render();
+    return;
+  }
+  for (const event of events) {
     serverSeq = Math.max(serverSeq, event.seq);
     if (event.senderId === serverClientId) continue;
     handleServerEvent(event);
