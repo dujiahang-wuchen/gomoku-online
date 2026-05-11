@@ -340,9 +340,14 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     if (room.sockets.get(ws.clientId) !== ws) return;
     room.sockets.delete(ws.clientId);
-    if (room.players[ws.clientId]) room.players[ws.clientId].online = false;
+    if (room.players[ws.clientId]) {
+      room.players[ws.clientId].online = false;
+      room.players[ws.clientId].left = true;
+      room.players[ws.clientId].lastSeen = 0;
+    }
     publish(room, {
-      type: "presence",
+      type: "leave",
+      reason: "close",
       senderId: ws.clientId,
       players: playerCount(room),
       online: activePlayerCount(room),

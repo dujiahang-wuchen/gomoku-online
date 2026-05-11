@@ -451,13 +451,22 @@ function dismissWinnerPrompt() {
   clearWinnerPromptTimer();
 }
 
-function showNotice(message) {
+function showNotice(message, options = {}) {
   window.clearTimeout(noticeTimer);
+  noticeTimer = null;
   noticeToast.textContent = message;
   noticeToast.hidden = false;
+  if (options.persistent) return;
   noticeTimer = window.setTimeout(() => {
     noticeToast.hidden = true;
+    noticeTimer = null;
   }, 4200);
+}
+
+function hideNotice() {
+  window.clearTimeout(noticeTimer);
+  noticeTimer = null;
+  noticeToast.hidden = true;
 }
 
 function prepareWinnerPrompt() {
@@ -972,6 +981,7 @@ async function joinServerRoom(roomId) {
     joined.players > 1
       ? `已连接，你执${colorName(localRemoteColor)}`
       : `房间已创建，你执${colorName(localRemoteColor)}`;
+  if (joined.players > 1) showNotice("已加入好友房间");
   render();
   connectServerSocket();
   window.setTimeout(() => {
@@ -998,7 +1008,7 @@ async function pollServer() {
         serverOnline = data.online ?? serverOnline;
         if (serverOnline > 1) {
           connectionState = `已连接，你执${colorName(localRemoteColor)}`;
-        } else if (connectionState !== "好友已退出房间") {
+        } else if (!isLeaveNoticeState()) {
           connectionState = `等待好友重连，你执${colorName(localRemoteColor)}`;
         }
         render();
@@ -1088,17 +1098,34 @@ function handleServerEvent(event) {
     serverOnline = event.online ?? serverOnline;
     const message = event.reason === "close" ? "好友关闭了浏览器或离开页面" : "好友已退出房间";
     connectionState = message;
-    showNotice(message);
+    showNotice(message, { persistent: true });
     render();
   }
   if (event.type === "presence") {
+    const wasOnline = serverOnline;
     serverPlayers = event.players || serverPlayers;
     serverOnline = event.online ?? serverOnline;
+    if (event.players > 1 && event.online > 1 && wasOnline < 2) showNotice("好友已加入房间");
+    if (event.players > 1 && event.online < 2 && wasOnline > 1 && !isLeaveNoticeState()) {
+      const message = "好友离线了，可能关闭了浏览器或断开网络";
+      connectionState = message;
+      showNotice(message, { persistent: true });
+      render();
+      return;
+    }
     connectionState = event.players > 1
       ? `${event.online > 1 ? "实时连接中" : "等待好友重连"}，你执${colorName(localRemoteColor)}`
       : connectionState;
     render();
   }
+}
+
+function isLeaveNoticeState() {
+  return (
+    connectionState === "好友已退出房间" ||
+    connectionState === "好友关闭了浏览器或离开页面" ||
+    connectionState === "好友离线了，可能关闭了浏览器或断开网络"
+  );
 }
 
 function handleRematchEvent(event) {
@@ -1295,6 +1322,7 @@ function leaveServerRoom(message = "未连接") {
   connectionRole = null;
   connectionState = message;
   forgetActiveRoom();
+  hideNotice();
   if (isServerPage()) {
     const url = new URL(location.href);
     url.searchParams.delete("room");
