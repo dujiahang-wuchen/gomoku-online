@@ -104,11 +104,20 @@ const server = http.createServer(async (req, res) => {
 
       if (!room.players[clientId]) {
         if (playerCount(room) >= 2) {
-          json(res, 403, { error: "room is full" });
-          return;
+          const offlineClientId =
+            Object.keys(room.players).find((id) => !room.players[id].online && room.players[id].color === "white") ||
+            Object.keys(room.players).find((id) => !room.players[id].online);
+          if (!offlineClientId) {
+            json(res, 403, { error: "房间已有两位在线玩家，请让房主重新创建邀请" });
+            return;
+          }
+          room.players[clientId] = { ...room.players[offlineClientId], online: false };
+          room.sockets.delete(offlineClientId);
+          delete room.players[offlineClientId];
+        } else {
+          const colors = new Set(Object.values(room.players).map((player) => player.color));
+          room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false };
         }
-        const colors = new Set(Object.values(room.players).map((player) => player.color));
-        room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false };
         publish(room, {
           type: "presence",
           senderId: clientId,
