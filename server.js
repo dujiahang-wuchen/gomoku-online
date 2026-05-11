@@ -109,13 +109,19 @@ const server = http.createServer(async (req, res) => {
         }
         const colors = new Set(Object.values(room.players).map((player) => player.color));
         room.players[clientId] = { color: colors.has("black") ? "white" : "black", online: false };
-        publish(room, { type: "presence", senderId: clientId, players: playerCount(room) });
+        publish(room, {
+          type: "presence",
+          senderId: clientId,
+          players: playerCount(room),
+          online: activePlayerCount(room),
+        });
       }
 
       json(res, 200, {
         roomId: room.id,
         color: room.players[clientId].color,
         players: playerCount(room),
+        online: activePlayerCount(room),
         seq: room.seq,
       });
       return;

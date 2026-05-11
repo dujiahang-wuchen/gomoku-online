@@ -12,10 +12,13 @@ const whiteScoreText = document.querySelector("#whiteScore");
 const moveList = document.querySelector("#moveList");
 const createInviteButton = document.querySelector("#createInvite");
 const joinInviteButton = document.querySelector("#joinInvite");
+const copyInviteButton = document.querySelector("#copyInvite");
+const leaveRoomButton = document.querySelector("#leaveRoom");
 const acceptAnswerButton = document.querySelector("#acceptAnswer");
 const inviteCode = document.querySelector("#inviteCode");
 const answerCode = document.querySelector("#answerCode");
 const connectionText = document.querySelector("#connectionText");
+const roomMeta = document.querySelector("#roomMeta");
 
 const size = 15;
 const cell = boardCanvas.width / (size + 1);
@@ -41,6 +44,8 @@ let serverRoom = null;
 let serverSeq = 0;
 let serverPolling = false;
 let serverSocket = null;
+let serverPlayers = 0;
+let serverOnline = 0;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 
 if (!serverClientId) {
@@ -186,7 +191,8 @@ function getCell(event) {
 
   const px = origin + col * cell;
   const py = origin + row * cell;
-  if (Math.hypot(x - px, y - py) > cell * 0.45) return null;
+  const tolerance = window.matchMedia("(pointer: coarse)").matches ? 0.58 : 0.45;
+  if (Math.hypot(x - px, y - py) > cell * tolerance) return null;
   return { row, col };
 }
 
@@ -250,6 +256,8 @@ function render() {
   blackScoreText.textContent = scores[black];
   whiteScoreText.textContent = scores[white];
   undoButton.disabled = moves.length === 0 || aiThinking || isRemoteGame();
+  copyInviteButton.disabled = !inviteCode.value.trim();
+  leaveRoomButton.disabled = !isServerGame() && !isRemoteGame();
   acceptAnswerButton.disabled =
     isServerPage() ||
     connectionRole !== "host" ||
@@ -258,6 +266,15 @@ function render() {
     !peer ||
     peer.signalingState !== "have-local-offer";
   connectionText.textContent = connectionState;
+  roomMeta.textContent = roomMetaText();
+}
+
+function roomMetaText() {
+  if (isServerGame()) {
+    return `房间 ${serverRoom} · 在线 ${serverOnline}/${Math.max(serverPlayers, 2)}`;
+  }
+  if (isRemoteGame()) return `点对点连接 · 你执${colorName(localRemoteColor)}`;
+  return isServerPage() ? "创建邀请后可复制链接发给好友" : "本地模式可使用邀请码连接";
 }
 
 function updateStatus() {
@@ -490,6 +507,8 @@ async function joinServerRoom(roomId) {
   });
   serverRoom = joined.roomId;
   serverSeq = joined.seq;
+  serverPlayers = joined.players;
+  serverOnline = joined.online || 0;
   localRemoteColor = joined.color === "black" ? black : white;
   aiToggle.checked = false;
   connectionState =
@@ -516,6 +535,8 @@ async function pollServer() {
         handleServerEvent(event);
       }
       if (data.players > 1) {
+        serverPlayers = data.players;
+        serverOnline = data.online || serverOnline;
         connectionState = `已连接，你执${colorName(localRemoteColor)}`;
         render();
       }
@@ -568,6 +589,8 @@ function handleServerSocketMessage(raw) {
   const message = JSON.parse(raw);
   if (message.type === "hello") {
     serverSeq = Math.max(serverSeq, message.seq || 0);
+    serverPlayers = message.players || serverPlayers;
+    serverOnline = message.online || serverOnline;
     connectionState =
       message.players > 1
         ? `实时连接中，你执${colorName(localRemoteColor)}`
@@ -593,6 +616,8 @@ function handleServerEvent(event) {
   if (event.type === "reset") resetGame(true);
   if (event.type === "state") applyServerState(event);
   if (event.type === "presence") {
+    serverPlayers = event.players || serverPlayers;
+    serverOnline = event.online ?? serverOnline;
     connectionState = event.players > 1
       ? `${event.online > 1 ? "实时连接中" : "等待好友重连"}，你执${colorName(localRemoteColor)}`
       : connectionState;
@@ -636,6 +661,8 @@ function leaveServerRoom(message = "未连接") {
   serverRoom = null;
   serverSeq = 0;
   serverPolling = false;
+  serverPlayers = 0;
+  serverOnline = 0;
   localRemoteColor = null;
   connectionRole = null;
   connectionState = message;
@@ -644,6 +671,25 @@ function leaveServerRoom(message = "未连接") {
     url.searchParams.delete("room");
     history.replaceState(null, "", url);
   }
+  render();
+}
+
+async function copyInviteLink() {
+  const value = inviteCode.value.trim();
+  if (!value) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      inviteCode.focus();
+      inviteCode.select();
+      document.execCommand("copy");
+    }
+    connectionState = "邀请链接已复制";
+  } catch {
+    connectionState = "复制失败，请手动复制";
+  }
+  render();
 }
 
 function createPeer() {
@@ -835,6 +881,16 @@ createInviteButton.addEventListener("click", () => createInvite().catch((error) 
   connectionState = `邀请失败：${error.message}`;
   render();
 }));
+copyInviteButton.addEventListener("click", () => copyInviteLink());
+leaveRoomButton.addEventListener("click", () => {
+  if (isServerGame()) leaveServerRoom("已退出好友房间");
+  if (isRemoteGame()) {
+    closePeer();
+    localRemoteColor = null;
+    connectionState = "已断开连接";
+  }
+  render();
+});
 joinInviteButton.addEventListener("click", () => joinInvite().catch((error) => {
   connectionState = `加入失败：${error.message}`;
   render();
@@ -844,6 +900,7 @@ acceptAnswerButton.addEventListener("click", () => acceptAnswer().catch((error) 
   render();
 }));
 answerCode.addEventListener("input", render);
+inviteCode.addEventListener("input", render);
 
 const initialRoom = new URLSearchParams(location.search).get("room");
 if (isServerPage() && initialRoom) {

@@ -216,9 +216,15 @@ select {
   font-weight: 800;
 }
 
+.room-meta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .invite-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   gap: 8px;
 }
 
@@ -290,21 +296,82 @@ textarea {
 
 @media (max-width: 900px) {
   .app {
+    width: min(100vw - 16px, 760px);
     grid-template-columns: 1fr;
     align-items: start;
-    padding: 18px 0 28px;
+    gap: 14px;
+    padding: 8px 0 22px;
+    min-height: auto;
+  }
+
+  .play-area {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(238, 244, 239, 0.84);
+    backdrop-filter: blur(10px);
+    padding-top: 8px;
+  }
+
+  canvas {
+    box-shadow: 0 14px 42px rgba(43, 35, 24, 0.18);
   }
 
   .panel {
     min-height: auto;
-    gap: 14px;
+    gap: 10px;
+    padding-bottom: 8px;
+  }
+
+  .status-card,
+  .settings,
+  .invite,
+  .score,
+  .moves {
+    background: rgba(255, 252, 245, 0.9);
+  }
+
+  .status-card {
+    padding: 12px;
+  }
+
+  .stone {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .status {
+    font-size: 19px;
   }
 
   h1 {
-    font-size: 42px;
+    font-size: 34px;
+  }
+
+  .controls,
+  .score {
+    gap: 8px;
+  }
+
+  button {
+    min-height: 44px;
+  }
+
+  .settings,
+  .invite {
+    padding: 12px;
+  }
+
+  .invite-actions {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  textarea {
+    min-height: 58px;
   }
 
   .moves {
-    max-height: 180px;
+    max-height: 140px;
   }
 }
