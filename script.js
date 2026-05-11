@@ -34,6 +34,8 @@ const empty = 0;
 const black = 1;
 const white = 2;
 const winnerPromptDelay = 2200;
+const activeRoomKey = "gomokuActiveRoom";
+const roomStatePrefix = "gomokuRoomState:";
 
 let board = createBoard();
 let current = black;
@@ -288,6 +290,7 @@ function place(row, col, color, options = {}) {
   }
 
   render();
+  saveRoomSnapshot();
   if (!options.remote) {
     sendServerEvent({ type: "move", row, col, color });
     sendServerState();
@@ -518,6 +521,7 @@ function resetGame(keepScore = true) {
   clearWinnerPromptTimer();
   if (!keepScore) scores = { [black]: 0, [white]: 0 };
   render();
+  saveRoomSnapshot();
   queueAiMove();
 }
 
@@ -820,6 +824,47 @@ function isServerGame() {
   return Boolean(serverRoom && localRemoteColor);
 }
 
+function roomStorageKey(roomId = serverRoom) {
+  return roomId ? `${roomStatePrefix}${roomId}` : "";
+}
+
+function currentGameState() {
+  return { board, current, winner, scores, undoQuota, moves, lastMove, winningLine };
+}
+
+function rememberActiveRoom(roomId) {
+  if (!roomId) return;
+  sessionStorage.setItem(activeRoomKey, roomId);
+  if (!isServerPage()) return;
+  const url = new URL(location.href);
+  url.searchParams.set("room", roomId);
+  history.replaceState(null, "", url);
+}
+
+function forgetActiveRoom() {
+  sessionStorage.removeItem(activeRoomKey);
+}
+
+function saveRoomSnapshot() {
+  const key = roomStorageKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(currentGameState()));
+  } catch {
+    // Storage can be unavailable in some private browser modes.
+  }
+}
+
+function loadRoomSnapshot(roomId) {
+  const key = roomStorageKey(roomId);
+  if (!key) return null;
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -852,11 +897,20 @@ async function joinServerRoom(roomId) {
     body: JSON.stringify({ clientId: serverClientId }),
   });
   serverRoom = joined.roomId;
+  rememberActiveRoom(serverRoom);
   serverSeq = joined.seq;
   serverPlayers = joined.players;
   serverOnline = joined.online || 0;
   localRemoteColor = joined.color === "black" ? black : white;
-  if (joined.state) setGameState(joined.state);
+  if (joined.state) {
+    setGameState(joined.state);
+  } else {
+    const snapshot = loadRoomSnapshot(serverRoom);
+    if (snapshot) {
+      setGameState(snapshot);
+      window.setTimeout(sendServerState, 0);
+    }
+  }
   aiToggle.checked = false;
   connectionState =
     joined.players > 1
@@ -1102,6 +1156,7 @@ function setGameState(state) {
     winnerPromptReady = false;
     clearWinnerPromptTimer();
   }
+  saveRoomSnapshot();
 }
 
 function sendServerEvent(message) {
@@ -1121,7 +1176,8 @@ function sendServerEvent(message) {
 }
 
 function sendServerState() {
-  sendServerEvent({ type: "state", board, current, winner, scores, undoQuota, moves, lastMove, winningLine });
+  saveRoomSnapshot();
+  sendServerEvent({ type: "state", ...currentGameState() });
 }
 
 function leaveServerRoom(message = "未连接") {
@@ -1135,6 +1191,7 @@ function leaveServerRoom(message = "未连接") {
   localRemoteColor = null;
   connectionRole = null;
   connectionState = message;
+  forgetActiveRoom();
   if (isServerPage()) {
     const url = new URL(location.href);
     url.searchParams.delete("room");
@@ -1388,7 +1445,7 @@ acceptAnswerButton.addEventListener("click", () => acceptAnswer().catch((error) 
 answerCode.addEventListener("input", render);
 inviteCode.addEventListener("input", render);
 
-const initialRoom = new URLSearchParams(location.search).get("room");
+const initialRoom = new URLSearchParams(location.search).get("room") || sessionStorage.getItem(activeRoomKey);
 if (isServerPage() && initialRoom) {
   joinServerRoom(initialRoom).catch((error) => {
     connectionState = `加入失败：${error.message}`;
