@@ -7,7 +7,6 @@ const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
 const aiLevelSelect = document.querySelector("#aiLevel");
 const playerColorSelect = document.querySelector("#playerColor");
-const roomColorSelect = document.querySelector("#roomColor");
 const blackScoreText = document.querySelector("#blackScore");
 const whiteScoreText = document.querySelector("#whiteScore");
 const moveList = document.querySelector("#moveList");
@@ -419,6 +418,11 @@ function resetAndShare() {
   sendPeerMessage({ type: "reset" });
 }
 
+function swapLocalColor() {
+  if (!localRemoteColor) return;
+  localRemoteColor = opponent(localRemoteColor);
+}
+
 function newGameAction() {
   if (isServerGame() || isRemoteGame()) {
     requestRematch();
@@ -708,10 +712,7 @@ async function api(path, options = {}) {
 }
 
 async function createServerInvite() {
-  const room = await api("/api/rooms", {
-    method: "POST",
-    body: JSON.stringify({ hostColor: roomColorSelect.value }),
-  });
+  const room = await api("/api/rooms", { method: "POST", body: "{}" });
   const joinUrl = new URL(location.href);
   joinUrl.searchParams.set("room", room.id);
   inviteCode.value = joinUrl.href;
@@ -862,6 +863,7 @@ function handleRematchEvent(event) {
   if (event.type === "rematch-accepted") {
     rematchPending = false;
     rematchRequestId = null;
+    if (event.swapColors) swapLocalColor();
     applyServerState(event);
     connectionState = "对方同意再来一局";
     render();
@@ -882,7 +884,7 @@ function receiveRematchRequest(event) {
     rejectRematch(event.requestId);
     return;
   }
-  const ok = window.confirm("对方想再来一局，是否同意？");
+  const ok = window.confirm("对方想再来一局，是否同意？同意后双方会交换黑白。");
   if (ok) {
     approveRematch(event.requestId);
   } else {
@@ -891,9 +893,21 @@ function receiveRematchRequest(event) {
 }
 
 function approveRematch(requestId) {
+  swapLocalColor();
   resetGame(true);
   connectionState = "已同意再来一局";
-  const message = { type: "rematch-accepted", requestId, board, current, winner, scores, undoQuota, moves, lastMove };
+  const message = {
+    type: "rematch-accepted",
+    requestId,
+    swapColors: true,
+    board,
+    current,
+    winner,
+    scores,
+    undoQuota,
+    moves,
+    lastMove,
+  };
   sendServerEvent(message);
   sendPeerMessage(message);
   render();

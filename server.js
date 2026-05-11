@@ -50,13 +50,14 @@ function getRoom(id) {
       waiters: [],
       sockets: new Map(),
       state: null,
-      hostColor: "black",
+      firstColor: Math.random() < 0.5 ? "black" : "white",
     });
   }
   return rooms.get(id);
 }
 
 function publish(room, event) {
+  applyRoomEvent(room, event);
   rememberState(room, event);
   const next = { ...event, seq: ++room.seq, at: Date.now() };
   room.events.push(next);
@@ -100,16 +101,16 @@ function rememberState(room, event) {
   };
 }
 
-function cleanHostColor(value) {
-  return ["black", "white", "random"].includes(value) ? value : "black";
+function applyRoomEvent(room, event) {
+  if (event.type !== "rematch-accepted" || !event.swapColors) return;
+  for (const player of Object.values(room.players)) {
+    player.color = player.color === "black" ? "white" : "black";
+  }
 }
 
 function nextPlayerColor(room) {
   const colors = new Set(Object.values(room.players).map((player) => player.color));
-  if (!colors.size) {
-    if (room.hostColor === "random") return Math.random() < 0.5 ? "black" : "white";
-    return room.hostColor;
-  }
+  if (!colors.size) return room.firstColor;
   return colors.has("black") ? "white" : "black";
 }
 
@@ -129,9 +130,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "POST" && url.pathname === "/api/rooms") {
       const id = crypto.randomBytes(4).toString("hex");
-      const body = await readBody(req);
-      const room = getRoom(id);
-      room.hostColor = cleanHostColor(body.hostColor);
+      await readBody(req);
+      getRoom(id);
       json(res, 200, { id });
       return;
     }
