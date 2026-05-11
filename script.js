@@ -36,6 +36,7 @@ const white = 2;
 const winnerPromptDelay = 2200;
 const activeRoomKey = "gomokuActiveRoom";
 const roomStatePrefix = "gomokuRoomState:";
+const localSnapshotKey = "gomokuLocalGame";
 
 let board = createBoard();
 let current = black;
@@ -832,6 +833,15 @@ function currentGameState() {
   return { board, current, winner, scores, undoQuota, moves, lastMove, winningLine };
 }
 
+function currentLocalState() {
+  return {
+    ...currentGameState(),
+    aiEnabled: aiToggle.checked,
+    aiLevel: aiLevelSelect.value,
+    playerColorValue: playerColorSelect.value,
+  };
+}
+
 function rememberActiveRoom(roomId) {
   if (!roomId) return;
   sessionStorage.setItem(activeRoomKey, roomId);
@@ -847,9 +857,21 @@ function forgetActiveRoom() {
 
 function saveRoomSnapshot() {
   const key = roomStorageKey();
-  if (!key) return;
+  if (!key) {
+    saveLocalSnapshot();
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(currentGameState()));
+  } catch {
+    // Storage can be unavailable in some private browser modes.
+  }
+}
+
+function saveLocalSnapshot() {
+  if (localRemoteColor || peer || channel) return;
+  try {
+    localStorage.setItem(localSnapshotKey, JSON.stringify(currentLocalState()));
   } catch {
     // Storage can be unavailable in some private browser modes.
   }
@@ -863,6 +885,27 @@ function loadRoomSnapshot(roomId) {
   } catch {
     return null;
   }
+}
+
+function loadLocalSnapshot() {
+  try {
+    return JSON.parse(localStorage.getItem(localSnapshotKey));
+  } catch {
+    return null;
+  }
+}
+
+function restoreLocalSnapshot() {
+  const snapshot = loadLocalSnapshot();
+  if (!snapshot || !snapshot.board || !Array.isArray(snapshot.moves)) return false;
+  aiToggle.checked = Boolean(snapshot.aiEnabled);
+  aiLevelSelect.value = snapshot.aiLevel || "normal";
+  playerColorSelect.value = snapshot.playerColorValue || "black";
+  setGameState(snapshot);
+  connectionState = "已恢复本地棋局";
+  render();
+  if (aiToggle.checked && !winner && isAiTurn()) queueAiMove();
+  return true;
 }
 
 async function api(path, options = {}) {
@@ -1418,6 +1461,7 @@ playerColorSelect.addEventListener("change", () => {
   resetGame(true);
 });
 aiLevelSelect.addEventListener("change", () => {
+  saveRoomSnapshot();
   if (aiToggle.checked && !winner && isAiTurn()) queueAiMove();
 });
 createInviteButton.addEventListener("click", () => createInvite().catch((error) => {
@@ -1452,5 +1496,5 @@ if (isServerPage() && initialRoom) {
     render();
   });
 } else {
-  resetGame();
+  if (!restoreLocalSnapshot()) resetGame();
 }
