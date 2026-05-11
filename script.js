@@ -31,6 +31,7 @@ const origin = cell;
 const empty = 0;
 const black = 1;
 const white = 2;
+const winnerPromptDelay = 2200;
 
 let board = createBoard();
 let current = black;
@@ -55,6 +56,8 @@ let serverOnline = 0;
 let undoRequestId = null;
 let undoPending = false;
 let winnerPromptDismissed = false;
+let winnerPromptReady = false;
+let winnerPromptTimer = null;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 
 if (!serverClientId) {
@@ -214,10 +217,10 @@ function place(row, col, color, options = {}) {
   if (hasFive(row, col, color)) {
     winner = color;
     scores[color] += 1;
-    winnerPromptDismissed = false;
+    prepareWinnerPrompt();
   } else if (moves.length === size * size) {
     winner = -1;
-    winnerPromptDismissed = false;
+    prepareWinnerPrompt();
   } else {
     current = opponent(current);
   }
@@ -307,6 +310,12 @@ function updateWinnerPrompt() {
     return;
   }
 
+  if (!winnerPromptReady) {
+    winnerDialog.hidden = true;
+    scheduleWinnerPrompt();
+    return;
+  }
+
   const title = winner === -1 ? "平局" : `${colorName(winner)}胜利`;
   winnerTitle.textContent = title;
   winnerMessage.textContent = isServerGame() || isRemoteGame()
@@ -318,6 +327,29 @@ function updateWinnerPrompt() {
 function dismissWinnerPrompt() {
   winnerPromptDismissed = true;
   winnerDialog.hidden = true;
+  clearWinnerPromptTimer();
+}
+
+function prepareWinnerPrompt() {
+  winnerPromptDismissed = false;
+  winnerPromptReady = false;
+  clearWinnerPromptTimer();
+}
+
+function scheduleWinnerPrompt() {
+  if (winnerPromptTimer) return;
+  winnerPromptTimer = window.setTimeout(() => {
+    winnerPromptTimer = null;
+    if (!winner || winnerPromptDismissed) return;
+    winnerPromptReady = true;
+    render();
+  }, winnerPromptDelay);
+}
+
+function clearWinnerPromptTimer() {
+  if (!winnerPromptTimer) return;
+  window.clearTimeout(winnerPromptTimer);
+  winnerPromptTimer = null;
 }
 
 function updateStatus() {
@@ -364,6 +396,8 @@ function resetGame(keepScore = true) {
   undoPending = false;
   undoRequestId = null;
   winnerPromptDismissed = false;
+  winnerPromptReady = false;
+  clearWinnerPromptTimer();
   if (!keepScore) scores = { [black]: 0, [white]: 0 };
   render();
   queueAiMove();
@@ -395,6 +429,8 @@ function undoLocalMoves(count = 1) {
   winner = empty;
   current = moves.length ? opponent(moves[moves.length - 1].color) : black;
   lastMove = moves.at(-1) ? { row: moves.at(-1).row, col: moves.at(-1).col } : null;
+  winnerPromptReady = false;
+  clearWinnerPromptTimer();
   render();
 }
 
@@ -830,8 +866,12 @@ function setGameState(state) {
   if (state.undoQuota) undoQuota = state.undoQuota;
   moves = state.moves;
   lastMove = state.lastMove;
-  if (winner && winner !== previousWinner) winnerPromptDismissed = false;
-  if (!winner) winnerPromptDismissed = false;
+  if (winner && winner !== previousWinner) prepareWinnerPrompt();
+  if (!winner) {
+    winnerPromptDismissed = false;
+    winnerPromptReady = false;
+    clearWinnerPromptTimer();
+  }
 }
 
 function sendServerEvent(message) {
