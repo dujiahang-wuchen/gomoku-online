@@ -844,6 +844,7 @@ function currentLocalState() {
 
 function rememberActiveRoom(roomId) {
   if (!roomId) return;
+  localStorage.setItem(activeRoomKey, roomId);
   sessionStorage.setItem(activeRoomKey, roomId);
   if (!isServerPage()) return;
   const url = new URL(location.href);
@@ -852,6 +853,7 @@ function rememberActiveRoom(roomId) {
 }
 
 function forgetActiveRoom() {
+  localStorage.removeItem(activeRoomKey);
   sessionStorage.removeItem(activeRoomKey);
 }
 
@@ -1230,9 +1232,22 @@ function sendServerEvent(message) {
   });
 }
 
-function notifyServerLeave() {
+function notifyServerLeave(options = {}) {
   if (!serverRoom) return;
   const payload = JSON.stringify({ type: "leave", senderId: serverClientId });
+  if (options.beacon && navigator.sendBeacon) {
+    navigator.sendBeacon(`/api/rooms/${serverRoom}/events`, payload);
+    return;
+  }
+  if (options.keepalive && "fetch" in window) {
+    fetch(`/api/rooms/${serverRoom}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+    return;
+  }
   if (isServerSocketOpen()) {
     serverSocket.send(payload);
     return;
@@ -1241,6 +1256,11 @@ function notifyServerLeave() {
     method: "POST",
     body: payload,
   }).catch(() => {});
+}
+
+function notifyPageClosing() {
+  if (!isServerGame()) return;
+  notifyServerLeave({ beacon: true, keepalive: true });
 }
 
 function sendServerState() {
@@ -1515,8 +1535,12 @@ acceptAnswerButton.addEventListener("click", () => acceptAnswer().catch((error) 
 }));
 answerCode.addEventListener("input", render);
 inviteCode.addEventListener("input", render);
+window.addEventListener("pagehide", notifyPageClosing);
 
-const initialRoom = new URLSearchParams(location.search).get("room") || sessionStorage.getItem(activeRoomKey);
+const initialRoom =
+  new URLSearchParams(location.search).get("room") ||
+  localStorage.getItem(activeRoomKey) ||
+  sessionStorage.getItem(activeRoomKey);
 if (isServerPage() && initialRoom) {
   joinServerRoom(initialRoom).catch((error) => {
     connectionState = `加入失败：${error.message}`;
