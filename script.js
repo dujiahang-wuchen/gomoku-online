@@ -20,6 +20,7 @@ const leaveRoomButton = document.querySelector("#leaveRoom");
 const acceptAnswerButton = document.querySelector("#acceptAnswer");
 const inviteCode = document.querySelector("#inviteCode");
 const answerCode = document.querySelector("#answerCode");
+const nicknameInput = document.querySelector("#nicknameInput");
 const connectionText = document.querySelector("#connectionText");
 const roomMeta = document.querySelector("#roomMeta");
 const winnerDialog = document.querySelector("#winnerDialog");
@@ -44,6 +45,7 @@ const winnerPromptDelay = 2200;
 const activeRoomKey = "gomokuActiveRoom";
 const roomStatePrefix = "gomokuRoomState:";
 const localSnapshotKey = "gomokuLocalGame";
+const nicknameKey = "gomokuNickname";
 
 let board = createBoard();
 let current = black;
@@ -77,11 +79,16 @@ let noticeTimer = null;
 let chatMessages = [];
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 let themeMode = localStorage.getItem("gomokuTheme") || "auto";
+let playerNickname = localStorage.getItem(nicknameKey) || "";
 
 if (!serverClientId) {
   serverClientId = createClientId();
   sessionStorage.setItem("gomokuClientId", serverClientId);
 }
+
+playerNickname = normalizeNickname(playerNickname) || `玩家${serverClientId.slice(-4)}`;
+nicknameInput.value = playerNickname;
+localStorage.setItem(nicknameKey, playerNickname);
 
 applyTheme();
 
@@ -96,6 +103,20 @@ function createClientId() {
         ).join("")
       : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
   return `client-${randomPart}`;
+}
+
+function normalizeNickname(name) {
+  return String(name || "").replace(/\s+/g, " ").trim().slice(0, 16);
+}
+
+function currentNickname() {
+  return normalizeNickname(playerNickname) || `玩家${serverClientId.slice(-4)}`;
+}
+
+function saveNickname() {
+  playerNickname = currentNickname();
+  nicknameInput.value = playerNickname;
+  localStorage.setItem(nicknameKey, playerNickname);
 }
 
 function createBoard() {
@@ -392,6 +413,7 @@ function render() {
     peer.signalingState !== "have-local-offer";
   connectionText.textContent = connectionState;
   roomMeta.textContent = roomMetaText();
+  if (document.activeElement !== nicknameInput) nicknameInput.value = currentNickname();
   chatStatus.textContent = chatStatusText();
   sendChatButton.disabled = !canChat() || !chatInput.value.trim();
   chatInput.disabled = !canChat();
@@ -585,7 +607,7 @@ function updateChatMessages() {
 
     const meta = document.createElement("div");
     meta.className = "chat-meta";
-    meta.textContent = `${message.mine ? "我" : "对方"} · ${formatChatTime(message.at)}`;
+    meta.textContent = `${chatSenderLabel(message)} · ${formatChatTime(message.at)}`;
 
     const bubble = document.createElement("div");
     bubble.className = "chat-bubble";
@@ -595,6 +617,11 @@ function updateChatMessages() {
     chatMessagesBox.appendChild(item);
   }
   if (shouldStickToBottom) chatMessagesBox.scrollTop = chatMessagesBox.scrollHeight;
+}
+
+function chatSenderLabel(message) {
+  if (message.mine) return `我（${currentNickname()}）`;
+  return message.senderName || "对方";
 }
 
 function formatChatTime(time) {
@@ -613,6 +640,7 @@ function addChatMessage(message) {
     text,
     mine,
     senderId: message.senderId || (mine ? serverClientId : "opponent"),
+    senderName: normalizeNickname(message.senderName) || (mine ? currentNickname() : "对方"),
     at: message.at || Date.now(),
   });
   chatMessages = chatMessages.slice(-80);
@@ -1060,9 +1088,10 @@ async function createServerInvite() {
 }
 
 async function joinServerRoom(roomId) {
+  saveNickname();
   const joined = await api(`/api/rooms/${roomId}/join`, {
     method: "POST",
-    body: JSON.stringify({ clientId: serverClientId }),
+    body: JSON.stringify({ clientId: serverClientId, name: currentNickname() }),
   });
   hideNotice();
   serverRoom = joined.roomId;
@@ -1371,7 +1400,7 @@ function setGameState(state) {
 
 function sendServerEvent(message) {
   if (!serverRoom) return;
-  const payload = JSON.stringify({ ...message, senderId: serverClientId });
+  const payload = JSON.stringify({ ...message, senderId: serverClientId, senderName: currentNickname() });
   if (isServerSocketOpen()) {
     serverSocket.send(payload);
     return;
@@ -1474,6 +1503,7 @@ function sendChatMessage() {
   const message = {
     type: "chat",
     text,
+    senderName: currentNickname(),
     id: `${serverClientId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     at: Date.now(),
   };
@@ -1590,7 +1620,7 @@ function setupChannel(nextChannel) {
     if (handleRematchEvent(message)) return;
     if (handleUndoEvent(message)) return;
     if (message.type === "chat") {
-      addChatMessage({ ...message, mine: false, senderId: "opponent" });
+      addChatMessage({ ...message, mine: false, senderId: message.senderId || "opponent" });
       render();
       return;
     }
@@ -1760,6 +1790,12 @@ chatForm.addEventListener("submit", (event) => {
   sendChatMessage();
 });
 chatInput.addEventListener("input", render);
+nicknameInput.addEventListener("input", () => {
+  playerNickname = normalizeNickname(nicknameInput.value);
+  localStorage.setItem(nicknameKey, playerNickname);
+  render();
+});
+nicknameInput.addEventListener("blur", saveNickname);
 leaveRoomButton.addEventListener("click", () => {
   if (isServerGame()) leaveServerRoom("已退出好友房间");
   if (isRemoteGame()) {

@@ -328,12 +328,24 @@ select {
   font-size: 13px;
 }
 
-.code-field {
+.code-field,
+.nickname-field {
   display: grid;
   gap: 6px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.nickname-field input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--field-bg);
+  font: inherit;
 }
 
 .hint {

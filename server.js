@@ -58,7 +58,7 @@ function getRoom(id) {
 }
 
 function publish(room, event) {
-  const cleanEvent = normalizeRoomEvent(event);
+  const cleanEvent = normalizeRoomEvent(room, event);
   if (!cleanEvent) return null;
   applyRoomEvent(room, cleanEvent);
   rememberState(room, cleanEvent);
@@ -77,7 +77,7 @@ function publish(room, event) {
   return next;
 }
 
-function normalizeRoomEvent(event) {
+function normalizeRoomEvent(room, event) {
   if (event.type !== "chat") return event;
   const text = String(event.text || "").replace(/\s+/g, " ").trim().slice(0, 160);
   if (!text) return null;
@@ -85,6 +85,7 @@ function normalizeRoomEvent(event) {
     type: "chat",
     id: String(event.id || crypto.randomBytes(6).toString("hex")).slice(0, 80),
     senderId: event.senderId,
+    senderName: playerName(room, event.senderId),
     text,
   };
 }
@@ -94,10 +95,19 @@ function rememberChat(room, event) {
   room.chat.push({
     id: event.id,
     senderId: event.senderId,
+    senderName: event.senderName,
     text: event.text,
     at: event.at,
   });
   room.chat = room.chat.slice(-80);
+}
+
+function normalizeName(name) {
+  return String(name || "").replace(/\s+/g, " ").trim().slice(0, 16);
+}
+
+function playerName(room, clientId) {
+  return normalizeName(room.players[clientId]?.name) || "玩家";
 }
 
 function broadcast(room, payload) {
@@ -191,6 +201,7 @@ const server = http.createServer(async (req, res) => {
       const room = getRoom(joinMatch[1]);
       const body = await readBody(req);
       const clientId = String(body.clientId || "");
+      const name = normalizeName(body.name) || `玩家${clientId.slice(-4)}`;
       if (!clientId) {
         json(res, 400, { error: "missing clientId" });
         return;
@@ -205,24 +216,28 @@ const server = http.createServer(async (req, res) => {
             json(res, 403, { error: "房间已有两位在线玩家，请让房主重新创建邀请" });
             return;
           }
-          room.players[clientId] = { ...room.players[offlineClientId], online: false, left: false, lastSeen: Date.now() };
+          room.players[clientId] = { ...room.players[offlineClientId], name, online: false, left: false, lastSeen: Date.now() };
           room.sockets.delete(offlineClientId);
           delete room.players[offlineClientId];
         } else {
-          room.players[clientId] = { color: nextPlayerColor(room), online: false, left: false, lastSeen: Date.now() };
+          room.players[clientId] = { color: nextPlayerColor(room), name, online: false, left: false, lastSeen: Date.now() };
         }
         publish(room, {
           type: "presence",
           senderId: clientId,
+          senderName: name,
           players: playerCount(room),
           online: activePlayerCount(room),
         });
+      } else {
+        room.players[clientId].name = name;
       }
 
       touchPlayer(room, clientId);
       json(res, 200, {
         roomId: room.id,
         color: room.players[clientId].color,
+        name: room.players[clientId].name,
         players: playerCount(room),
         online: activePlayerCount(room),
         seq: room.seq,
