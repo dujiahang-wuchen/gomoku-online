@@ -3,6 +3,7 @@ const ctx = boardCanvas.getContext("2d");
 const statusText = document.querySelector("#statusText");
 const turnStone = document.querySelector("#turnStone");
 const playerBadge = document.querySelector("#playerBadge");
+const themeToggleButton = document.querySelector("#themeToggle");
 const newGameButton = document.querySelector("#newGame");
 const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
@@ -63,11 +64,14 @@ let winnerPromptDismissed = false;
 let winnerPromptReady = false;
 let winnerPromptTimer = null;
 let serverClientId = sessionStorage.getItem("gomokuClientId");
+let themeMode = localStorage.getItem("gomokuTheme") || "auto";
 
 if (!serverClientId) {
   serverClientId = createClientId();
   sessionStorage.setItem("gomokuClientId", serverClientId);
 }
+
+applyTheme();
 
 function createClientId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -84,6 +88,22 @@ function createClientId() {
 
 function createBoard() {
   return Array.from({ length: size }, () => Array(size).fill(empty));
+}
+
+function applyTheme() {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = themeMode === "dark" || (themeMode === "auto" && prefersDark);
+  document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  themeToggleButton.textContent = isDark ? "浅色" : "黑色";
+  themeToggleButton.setAttribute("aria-label", isDark ? "切换浅色模式" : "切换黑色模式");
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.dataset.theme === "dark";
+  themeMode = isDark ? "light" : "dark";
+  localStorage.setItem("gomokuTheme", themeMode);
+  applyTheme();
+  render();
 }
 
 function colorName(color) {
@@ -110,14 +130,18 @@ function pointToText(row, col) {
   return `${String.fromCharCode(65 + col)}${row + 1}`;
 }
 
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 function drawBoard() {
   const w = boardCanvas.width;
   ctx.clearRect(0, 0, w, w);
 
-  ctx.fillStyle = "#d9ad63";
+  ctx.fillStyle = cssVar("--board") || "#d9ad63";
   ctx.fillRect(0, 0, w, w);
 
-  ctx.strokeStyle = "rgba(41, 28, 16, 0.72)";
+  ctx.strokeStyle = cssVar("--board-line") || "rgba(41, 28, 16, 0.72)";
   ctx.lineWidth = 2;
   for (let i = 0; i < size; i += 1) {
     const p = origin + i * cell;
@@ -150,7 +174,7 @@ function drawStar(row, col) {
   const y = origin + row * cell;
   ctx.beginPath();
   ctx.arc(x, y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(35, 24, 15, 0.86)";
+  ctx.fillStyle = cssVar("--board-star") || "rgba(35, 24, 15, 0.86)";
   ctx.fill();
 }
 
@@ -184,6 +208,11 @@ function drawStone(row, col, color) {
   }
   ctx.fillStyle = gradient;
   ctx.fill();
+  ctx.strokeStyle = color === black
+    ? cssVar("--black-stone-ring") || "rgba(255, 255, 255, 0.1)"
+    : cssVar("--white-stone-ring") || "rgba(26, 31, 35, 0.18)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -192,7 +221,9 @@ function drawLastMove(row, col) {
   const y = origin + row * cell;
   ctx.beginPath();
   ctx.arc(x, y, 7, 0, Math.PI * 2);
-  ctx.strokeStyle = board[row][col] === black ? "#f4d35e" : "#2f7d68";
+  ctx.strokeStyle = board[row][col] === black
+    ? cssVar("--last-black") || "#f4d35e"
+    : cssVar("--last-white") || "#2f7d68";
   ctx.lineWidth = 3;
   ctx.stroke();
 }
@@ -1308,6 +1339,12 @@ async function acceptAnswer() {
   render();
 }
 
+themeToggleButton.addEventListener("click", toggleTheme);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (themeMode !== "auto") return;
+  applyTheme();
+  render();
+});
 newGameButton.addEventListener("click", newGameAction);
 undoButton.addEventListener("click", undoMove);
 winnerRematchButton.addEventListener("click", newGameAction);
