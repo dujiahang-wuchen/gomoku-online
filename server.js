@@ -50,6 +50,7 @@ function getRoom(id) {
       waiters: [],
       sockets: new Map(),
       state: null,
+      chat: [],
       firstColor: Math.random() < 0.5 ? "black" : "white",
     });
   }
@@ -57,20 +58,46 @@ function getRoom(id) {
 }
 
 function publish(room, event) {
-  applyRoomEvent(room, event);
-  rememberState(room, event);
+  const cleanEvent = normalizeRoomEvent(event);
+  if (!cleanEvent) return null;
+  applyRoomEvent(room, cleanEvent);
+  rememberState(room, cleanEvent);
   const next = {
-    ...event,
+    ...cleanEvent,
     players: playerCount(room),
     online: activePlayerCount(room),
     seq: ++room.seq,
     at: Date.now(),
   };
+  rememberChat(room, next);
   room.events.push(next);
   room.events = room.events.slice(-300);
   for (const waiter of room.waiters.splice(0)) waiter();
   broadcast(room, { type: "events", events: [next], seq: room.seq, players: playerCount(room), online: activePlayerCount(room) });
   return next;
+}
+
+function normalizeRoomEvent(event) {
+  if (event.type !== "chat") return event;
+  const text = String(event.text || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  if (!text) return null;
+  return {
+    type: "chat",
+    id: String(event.id || crypto.randomBytes(6).toString("hex")).slice(0, 80),
+    senderId: event.senderId,
+    text,
+  };
+}
+
+function rememberChat(room, event) {
+  if (event.type !== "chat") return;
+  room.chat.push({
+    id: event.id,
+    senderId: event.senderId,
+    text: event.text,
+    at: event.at,
+  });
+  room.chat = room.chat.slice(-80);
 }
 
 function broadcast(room, payload) {
@@ -200,6 +227,7 @@ const server = http.createServer(async (req, res) => {
         online: activePlayerCount(room),
         seq: room.seq,
         state: room.state,
+        chat: room.chat,
       });
       return;
     }
@@ -240,7 +268,14 @@ const server = http.createServer(async (req, res) => {
           });
           events = room.events.filter((event) => event.seq > since);
         }
-        json(res, 200, { events, seq: room.seq, players: playerCount(room), online: activePlayerCount(room), state: room.state });
+        json(res, 200, {
+          events,
+          seq: room.seq,
+          players: playerCount(room),
+          online: activePlayerCount(room),
+          state: room.state,
+          chat: room.chat,
+        });
         return;
       }
     }
@@ -313,6 +348,7 @@ wss.on("connection", (ws) => {
       players: playerCount(room),
       online: activePlayerCount(room),
       state: room.state,
+      chat: room.chat,
     })
   );
   publish(room, {

@@ -28,6 +28,11 @@ const winnerMessage = document.querySelector("#winnerMessage");
 const winnerRematchButton = document.querySelector("#winnerRematch");
 const winnerCloseButton = document.querySelector("#winnerClose");
 const noticeToast = document.querySelector("#noticeToast");
+const chatStatus = document.querySelector("#chatStatus");
+const chatMessagesBox = document.querySelector("#chatMessages");
+const chatForm = document.querySelector("#chatForm");
+const chatInput = document.querySelector("#chatInput");
+const sendChatButton = document.querySelector("#sendChat");
 
 const size = 15;
 const cell = boardCanvas.width / (size + 1);
@@ -69,6 +74,7 @@ let winnerPromptDismissed = false;
 let winnerPromptReady = false;
 let winnerPromptTimer = null;
 let noticeTimer = null;
+let chatMessages = [];
 let serverClientId = sessionStorage.getItem("gomokuClientId");
 let themeMode = localStorage.getItem("gomokuTheme") || "auto";
 
@@ -386,7 +392,11 @@ function render() {
     peer.signalingState !== "have-local-offer";
   connectionText.textContent = connectionState;
   roomMeta.textContent = roomMetaText();
+  chatStatus.textContent = chatStatusText();
+  sendChatButton.disabled = !canChat() || !chatInput.value.trim();
+  chatInput.disabled = !canChat();
   updatePlayerBadge();
+  updateChatMessages();
   updateWinnerPrompt();
 }
 
@@ -403,6 +413,19 @@ function canUndoNow() {
 
 function canSyncRoom() {
   return isServerGame() || isRemoteGame();
+}
+
+function canChat() {
+  return isServerGame() || isRemoteGame();
+}
+
+function chatStatusText() {
+  if (isServerGame()) {
+    if (serverPlayers < 2) return "等待好友加入";
+    return serverOnline > 1 ? "可聊天" : "对方离线";
+  }
+  if (isRemoteGame()) return "可聊天";
+  return "联机后可聊天";
 }
 
 function roomMetaText() {
@@ -543,6 +566,65 @@ function updateMoves() {
     item.textContent = `${colorName(move.color)} ${pointToText(move.row, move.col)}`;
     moveList.appendChild(item);
   }
+}
+
+function updateChatMessages() {
+  const shouldStickToBottom =
+    chatMessagesBox.scrollTop + chatMessagesBox.clientHeight >= chatMessagesBox.scrollHeight - 16;
+  chatMessagesBox.innerHTML = "";
+  if (!chatMessages.length) {
+    const emptyText = document.createElement("p");
+    emptyText.className = "chat-empty";
+    emptyText.textContent = "暂无消息";
+    chatMessagesBox.appendChild(emptyText);
+    return;
+  }
+  for (const message of chatMessages.slice(-60)) {
+    const item = document.createElement("div");
+    item.className = `chat-message ${message.mine ? "me" : "opponent"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "chat-meta";
+    meta.textContent = `${message.mine ? "我" : "对方"} · ${formatChatTime(message.at)}`;
+
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
+    bubble.textContent = message.text;
+
+    item.append(meta, bubble);
+    chatMessagesBox.appendChild(item);
+  }
+  if (shouldStickToBottom) chatMessagesBox.scrollTop = chatMessagesBox.scrollHeight;
+}
+
+function formatChatTime(time) {
+  const date = time ? new Date(time) : new Date();
+  return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function addChatMessage(message) {
+  const text = normalizeChatText(message.text);
+  if (!text) return;
+  const mine = message.mine ?? message.senderId === serverClientId;
+  const id = message.id || `${message.senderId || (mine ? "me" : "opponent")}-${message.at || Date.now()}-${text}`;
+  if (chatMessages.some((item) => item.id === id)) return;
+  chatMessages.push({
+    id,
+    text,
+    mine,
+    senderId: message.senderId || (mine ? serverClientId : "opponent"),
+    at: message.at || Date.now(),
+  });
+  chatMessages = chatMessages.slice(-80);
+}
+
+function setChatMessages(messages = []) {
+  chatMessages = [];
+  for (const message of messages) addChatMessage(message);
+}
+
+function normalizeChatText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
 function resetGame(keepScore = true) {
@@ -989,6 +1071,7 @@ async function joinServerRoom(roomId) {
   serverPlayers = joined.players;
   serverOnline = joined.online || 0;
   localRemoteColor = joined.color === "black" ? black : white;
+  setChatMessages(joined.chat || []);
   if (joined.state) {
     setGameState(joined.state);
   } else {
@@ -1085,6 +1168,7 @@ function handleServerSocketMessage(raw) {
     serverSeq = Math.max(serverSeq, message.seq || 0);
     serverPlayers = message.players ?? serverPlayers;
     serverOnline = message.online ?? serverOnline;
+    if (message.chat) setChatMessages(message.chat);
     if (message.state) setGameState(message.state);
     connectionState = serverConnectionText({ players: message.players, online: message.online, mode: "实时同步" });
     if (hadLeaveNotice && serverOnline > 1) showNotice("好友已重新加入房间");
@@ -1114,6 +1198,11 @@ function pollDelay(eventCount) {
 function handleServerEvent(event) {
   if (handleRematchEvent(event)) return;
   if (handleUndoEvent(event)) return;
+  if (event.type === "chat") {
+    addChatMessage(event);
+    render();
+    return;
+  }
   if (event.type === "move") place(event.row, event.col, event.color, { remote: true });
   if (event.type === "reset") resetGame(true);
   if (event.type === "state") applyServerState(event);
@@ -1350,6 +1439,7 @@ async function syncServerRoomState() {
     serverSeq = Math.max(serverSeq, data.seq || serverSeq);
     serverPlayers = data.players ?? serverPlayers;
     serverOnline = data.online ?? serverOnline;
+    if (data.chat) setChatMessages(data.chat);
     if (data.state) {
       setGameState(data.state);
       showNotice("棋局已同步");
@@ -1378,6 +1468,22 @@ function syncPeerRoomState() {
   render();
 }
 
+function sendChatMessage() {
+  const text = normalizeChatText(chatInput.value);
+  if (!text || !canChat()) return;
+  const message = {
+    type: "chat",
+    text,
+    id: `${serverClientId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    at: Date.now(),
+  };
+  addChatMessage({ ...message, mine: true, senderId: serverClientId });
+  chatInput.value = "";
+  if (isServerGame()) sendServerEvent(message);
+  if (isRemoteGame()) sendPeerMessage(message);
+  render();
+}
+
 function sendServerState() {
   saveRoomSnapshot();
   sendServerEvent({ type: "state", ...currentGameState() });
@@ -1396,6 +1502,7 @@ function leaveServerRoom(message = "未连接") {
   localRemoteColor = null;
   connectionRole = null;
   connectionState = message;
+  chatMessages = [];
   forgetActiveRoom();
   hideNotice();
   if (isServerPage()) {
@@ -1482,6 +1589,11 @@ function setupChannel(nextChannel) {
     const message = JSON.parse(event.data);
     if (handleRematchEvent(message)) return;
     if (handleUndoEvent(message)) return;
+    if (message.type === "chat") {
+      addChatMessage({ ...message, mine: false, senderId: "opponent" });
+      render();
+      return;
+    }
     if (message.type === "move") place(message.row, message.col, message.color, { remote: true });
     if (message.type === "reset") resetGame(true);
     if (message.type === "sync-request") {
@@ -1643,6 +1755,11 @@ syncRoomButton.addEventListener("click", () => syncRoomState().catch((error) => 
   connectionState = `同步失败：${error.message}`;
   render();
 }));
+chatForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendChatMessage();
+});
+chatInput.addEventListener("input", render);
 leaveRoomButton.addEventListener("click", () => {
   if (isServerGame()) leaveServerRoom("已退出好友房间");
   if (isRemoteGame()) {
