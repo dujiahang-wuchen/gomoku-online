@@ -621,6 +621,14 @@ function updateStatus() {
     statusText.textContent = `等待${colorName(current)}`;
     return;
   }
+  if (aiToggle.checked) {
+    if (current === playerColor()) {
+      statusText.textContent = `轮到你下${colorName(current)}`;
+    } else {
+      statusText.textContent = aiThinking ? "电脑思考中" : `等待电脑下${colorName(current)}`;
+    }
+    return;
+  }
   statusText.textContent = aiThinking ? "电脑思考中" : `${colorName(current)}落子`;
 }
 
@@ -635,8 +643,8 @@ function updateScoreboard() {
   if (aiToggle.checked) {
     const humanColor = playerColor();
     const computerColor = aiColor();
-    blackScoreLabel.textContent = "我";
-    whiteScoreLabel.textContent = "电脑";
+    blackScoreLabel.textContent = `我（${colorName(humanColor)}）`;
+    whiteScoreLabel.textContent = `电脑（${colorName(computerColor)}）`;
     blackScoreText.textContent = scores[humanColor] || 0;
     whiteScoreText.textContent = scores[computerColor] || 0;
     return;
@@ -1042,6 +1050,7 @@ boardCanvas.addEventListener("click", (event) => {
   if (aiThinking || undoPending || isAiTurn()) return;
   if (isRemoteGame() && current !== localRemoteColor) return;
   if (isServerGame() && current !== localRemoteColor) return;
+  if (aiToggle.checked && current !== playerColor()) return;
   const cellPoint = getCell(event);
   if (!cellPoint) return;
   if (place(cellPoint.row, cellPoint.col, current)) queueAiMove();
