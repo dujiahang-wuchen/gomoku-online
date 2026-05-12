@@ -77,7 +77,7 @@ select {
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(320px, 760px) 340px;
-  gap: 28px;
+  gap: 32px;
   align-items: center;
   padding: 28px 0;
 }
@@ -104,7 +104,7 @@ canvas {
   min-height: min(760px, calc(100vh - 56px));
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   padding: 6px 0;
 }
 
@@ -158,11 +158,11 @@ h1 {
 }
 
 .collapsible > summary {
-  min-height: 36px;
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 2px 2px 10px;
+  padding: 4px 6px 12px;
   color: var(--ink);
   font-size: 14px;
   font-weight: 800;
@@ -177,6 +177,7 @@ h1 {
 .collapsible > summary::after {
   content: "收起";
   margin-left: auto;
+  padding-left: 10px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -186,14 +187,15 @@ h1 {
 }
 
 .collapsible:not([open]) > summary {
-  padding-bottom: 2px;
+  margin-bottom: 0;
+  padding-bottom: 4px;
 }
 
 .status-card {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   align-items: center;
-  padding: 18px;
+  padding: 20px;
 }
 
 .stone {
@@ -252,13 +254,14 @@ h1 {
 .controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
 button {
   min-height: 48px;
   border: 0;
   border-radius: 8px;
+  padding: 0 14px;
   color: #fff;
   background: var(--accent);
   font-weight: 800;
@@ -294,15 +297,15 @@ button:disabled {
 
 .settings {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 18px;
 }
 
 .settings > summary,
 .invite > summary,
 .chat > summary,
 .moves-panel > summary {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .settings:not([open]),
@@ -314,7 +317,7 @@ button:disabled {
 
 .toggle,
 .select-row {
-  min-height: 40px;
+  min-height: 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -331,53 +334,56 @@ input[type="checkbox"] {
 
 select {
   min-width: 116px;
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--ink);
   background: var(--field-bg);
 }
 
 .invite {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px;
 }
 
 .invite-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .connection {
   margin: 2px 0 0;
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .room-meta {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.45;
 }
 
 .invite-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
 }
 
 .invite-actions button {
   min-height: 40px;
-  padding: 0 8px;
+  padding: 0 10px;
   font-size: 13px;
 }
 
 .code-field,
 .nickname-field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
@@ -385,10 +391,10 @@ select {
 
 .nickname-field input {
   width: 100%;
-  min-height: 38px;
+  min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--ink);
   background: var(--field-bg);
   font: inherit;
@@ -403,8 +409,8 @@ select {
 
 .chat {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px;
 }
 
 .chat-head {
@@ -427,10 +433,10 @@ select {
   overflow: auto;
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px;
+  padding: 12px;
   background: var(--field-bg);
 }
 
@@ -442,7 +448,7 @@ select {
 
 .chat-message {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   justify-items: start;
 }
 
@@ -459,7 +465,7 @@ select {
 .chat-bubble {
   max-width: 86%;
   border-radius: 8px;
-  padding: 7px 9px;
+  padding: 9px 11px;
   color: var(--ink);
   background: var(--surface-strong);
   border: 1px solid var(--line);
@@ -477,15 +483,15 @@ select {
 .chat-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chat-form input {
   min-width: 0;
-  min-height: 40px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   color: var(--ink);
   background: var(--field-bg);
   font: inherit;
@@ -501,10 +507,10 @@ textarea {
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   color: var(--ink);
   background: var(--field-bg);
-  font: 12px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .score {
@@ -514,7 +520,7 @@ textarea {
 }
 
 .score > div {
-  padding: 16px 18px;
+  padding: 18px 20px;
 }
 
 .score > div + div {
@@ -523,7 +529,7 @@ textarea {
 
 .score strong {
   display: block;
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 30px;
 }
 
@@ -537,17 +543,17 @@ textarea {
   min-height: 126px;
   max-height: 260px;
   margin: 0;
-  padding: 12px 12px 12px 36px;
+  padding: 14px 16px 14px 38px;
   overflow: auto;
   color: var(--muted);
 }
 
 .moves-panel {
-  padding: 16px;
+  padding: 18px;
 }
 
 .moves li {
-  padding: 4px 0;
+  padding: 5px 0;
 }
 
 .winner-dialog {
@@ -620,7 +626,7 @@ textarea {
     width: min(100vw - 16px, 760px);
     grid-template-columns: 1fr;
     align-items: start;
-    gap: 14px;
+    gap: 16px;
     padding: 8px 0 22px;
     min-height: auto;
   }
@@ -640,7 +646,7 @@ textarea {
 
   .panel {
     min-height: auto;
-    gap: 10px;
+    gap: 12px;
     padding-bottom: 8px;
   }
 
@@ -654,7 +660,7 @@ textarea {
   }
 
   .status-card {
-    padding: 14px;
+    padding: 16px;
   }
 
   .stone {
@@ -676,9 +682,12 @@ textarea {
     font-size: 34px;
   }
 
-  .controls,
+  .controls {
+    gap: 10px;
+  }
+
   .score {
-    gap: 8px;
+    gap: 0;
   }
 
   button {
@@ -695,7 +704,7 @@ textarea {
   .invite,
   .chat,
   .moves-panel {
-    padding: 14px;
+    padding: 16px;
   }
 
   .invite-actions {

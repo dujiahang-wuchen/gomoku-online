@@ -92,7 +92,6 @@ playerNickname = normalizeNickname(playerNickname) || `玩家${serverClientId.sl
 nicknameInput.value = playerNickname;
 localStorage.setItem(nicknameKey, playerNickname);
 
-setupCollapsiblePanels();
 applyTheme();
 
 function createClientId() {
@@ -120,13 +119,6 @@ function saveNickname() {
   playerNickname = currentNickname();
   nicknameInput.value = playerNickname;
   localStorage.setItem(nicknameKey, playerNickname);
-}
-
-function setupCollapsiblePanels() {
-  if (!window.matchMedia("(max-width: 900px)").matches) return;
-  for (const panel of document.querySelectorAll(".settings, .chat, .moves-panel")) {
-    panel.removeAttribute("open");
-  }
 }
 
 function createBoard() {
