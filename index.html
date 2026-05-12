@@ -27,7 +27,11 @@
             <p class="eyebrow">Game Hub</p>
             <h1>游戏大厅</h1>
           </div>
-          <div class="profile-panel">
+          <details class="profile-panel">
+            <summary>
+              <span>玩家信息</span>
+              <strong id="profileSummaryName">玩家</strong>
+            </summary>
             <label class="profile-edit">
               <span>当前玩家</span>
               <input id="profileNameInput" type="text" maxlength="16" autocomplete="nickname" />
@@ -36,7 +40,7 @@
               <button id="saveProfile" class="secondary-button profile-button" type="button">保存昵称</button>
               <button id="logoutLobby" class="secondary-button profile-button" type="button">退出登录</button>
             </div>
-          </div>
+          </details>
         </header>
         <div class="game-grid" aria-label="游戏列表">
           <button id="startGomoku" class="game-card" type="button">

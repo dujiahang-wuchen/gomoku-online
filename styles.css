@@ -134,8 +134,6 @@ select {
 
 .profile-panel {
   width: min(260px, 100%);
-  display: grid;
-  gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
@@ -146,9 +144,47 @@ select {
   line-height: 1.45;
 }
 
+.profile-panel > summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.profile-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-panel > summary::after {
+  content: "展开";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-panel[open] > summary {
+  margin-bottom: 12px;
+}
+
+.profile-panel[open] > summary::after {
+  content: "收起";
+}
+
+.profile-panel > summary strong {
+  max-width: 88px;
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .profile-edit {
   display: grid;
   gap: 8px;
+  margin-bottom: 10px;
 }
 
 .profile-edit input {

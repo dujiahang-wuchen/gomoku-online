@@ -46,6 +46,7 @@ const profileNameInput = document.querySelector("#profileNameInput");
 const saveProfileButton = document.querySelector("#saveProfile");
 const logoutLobbyButton = document.querySelector("#logoutLobby");
 const logoutGameButton = document.querySelector("#logoutGame");
+const profileSummaryName = document.querySelector("#profileSummaryName");
 const gameProfileName = document.querySelector("#gameProfileName");
 const startGomokuButton = document.querySelector("#startGomoku");
 const backLobbyButton = document.querySelector("#backLobby");
@@ -149,6 +150,7 @@ function refreshProfileUi() {
   const name = currentNickname();
   if (document.activeElement !== guestNameInput) guestNameInput.value = name;
   if (document.activeElement !== profileNameInput) profileNameInput.value = name;
+  profileSummaryName.textContent = name;
   gameProfileName.textContent = name;
 }
 
