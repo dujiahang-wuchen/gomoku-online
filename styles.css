@@ -298,7 +298,7 @@ canvas {
 
 .title-row {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .title-row > div:first-child {
@@ -307,9 +307,11 @@ canvas {
 
 .title-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  order: -1;
+  grid-template-columns: minmax(86px, 1.25fr) repeat(3, minmax(54px, 0.85fr));
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
 }
 
 .game-profile-name {
@@ -334,8 +336,8 @@ canvas {
   min-height: 38px;
   min-width: 0;
   width: 100%;
-  padding: 0 10px;
-  font-size: 13px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .theme-toggle {
@@ -360,7 +362,7 @@ canvas {
 
 h1 {
   margin: 0;
-  font-size: clamp(36px, 6vw, 68px);
+  font-size: clamp(46px, 6vw, 66px);
   line-height: 0.98;
   letter-spacing: 0;
   word-break: keep-all;
