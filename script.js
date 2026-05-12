@@ -598,8 +598,8 @@ function updateScoreboard() {
     whiteScoreText.textContent = scores[computerColor] || 0;
     return;
   }
-  blackScoreLabel.textContent = "玩家 1";
-  whiteScoreLabel.textContent = "玩家 2";
+  blackScoreLabel.textContent = "黑棋";
+  whiteScoreLabel.textContent = "白棋";
   blackScoreText.textContent = scores[black] || 0;
   whiteScoreText.textContent = scores[white] || 0;
 }
