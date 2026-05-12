@@ -591,14 +591,23 @@ function updateStatus() {
 
 function updateScoreboard() {
   if (isServerGame() || isRemoteGame()) {
-    blackScoreLabel.textContent = `我（${colorName(localRemoteColor)}）`;
-    whiteScoreLabel.textContent = `对方（${colorName(opponent(localRemoteColor))}）`;
+    blackScoreLabel.textContent = "我";
+    whiteScoreLabel.textContent = "对方";
     blackScoreText.textContent = scores[localRemoteColor] || 0;
     whiteScoreText.textContent = scores[opponent(localRemoteColor)] || 0;
     return;
   }
-  blackScoreLabel.textContent = "黑棋";
-  whiteScoreLabel.textContent = "白棋";
+  if (aiToggle.checked) {
+    const humanColor = playerColor();
+    const computerColor = aiColor();
+    blackScoreLabel.textContent = "我";
+    whiteScoreLabel.textContent = "电脑";
+    blackScoreText.textContent = scores[humanColor] || 0;
+    whiteScoreText.textContent = scores[computerColor] || 0;
+    return;
+  }
+  blackScoreLabel.textContent = "玩家 1";
+  whiteScoreLabel.textContent = "玩家 2";
   blackScoreText.textContent = scores[black] || 0;
   whiteScoreText.textContent = scores[white] || 0;
 }

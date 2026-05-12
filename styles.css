@@ -158,9 +158,11 @@ h1 {
 }
 
 .collapsible > summary {
-  min-height: 28px;
+  min-height: 36px;
   display: flex;
   align-items: center;
+  gap: 10px;
+  padding: 2px 2px 10px;
   color: var(--ink);
   font-size: 14px;
   font-weight: 800;
@@ -183,11 +185,15 @@ h1 {
   content: "展开";
 }
 
+.collapsible:not([open]) > summary {
+  padding-bottom: 2px;
+}
+
 .status-card {
   display: flex;
   gap: 14px;
   align-items: center;
-  padding: 16px;
+  padding: 18px;
 }
 
 .stone {
@@ -289,7 +295,7 @@ button:disabled {
 .settings {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .settings > summary,
@@ -336,7 +342,7 @@ select {
 .invite {
   display: grid;
   gap: 10px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .invite-head {
@@ -398,7 +404,7 @@ select {
 .chat {
   display: grid;
   gap: 10px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .chat-head {
@@ -508,7 +514,7 @@ textarea {
 }
 
 .score > div {
-  padding: 14px 16px;
+  padding: 16px 18px;
 }
 
 .score > div + div {
@@ -519,6 +525,11 @@ textarea {
   display: block;
   margin-top: 2px;
   font-size: 30px;
+}
+
+.score-label {
+  display: block;
+  line-height: 1.35;
 }
 
 .moves {
@@ -532,7 +543,7 @@ textarea {
 }
 
 .moves-panel {
-  padding: 14px;
+  padding: 16px;
 }
 
 .moves li {
@@ -643,7 +654,7 @@ textarea {
   }
 
   .status-card {
-    padding: 12px;
+    padding: 14px;
   }
 
   .stone {
@@ -682,8 +693,9 @@ textarea {
 
   .settings,
   .invite,
-  .chat {
-    padding: 12px;
+  .chat,
+  .moves-panel {
+    padding: 14px;
   }
 
   .invite-actions {
