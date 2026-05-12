@@ -7,7 +7,47 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app">
+    <section id="loginView" class="platform-view auth-view" hidden>
+      <div class="platform-panel">
+        <p class="eyebrow">Game Hub</p>
+        <h1>小游戏大厅</h1>
+        <p class="platform-copy">先用游客身份进入，之后可以从大厅选择五子棋或新的小游戏。</p>
+        <label class="nickname-field platform-name-field">
+          <span>昵称</span>
+          <input id="guestNameInput" type="text" maxlength="16" autocomplete="nickname" />
+        </label>
+        <button id="enterLobby" type="button">游客进入</button>
+      </div>
+    </section>
+
+    <section id="lobbyView" class="platform-view lobby-view" hidden>
+      <div class="lobby-shell">
+        <header class="lobby-header">
+          <div>
+            <p class="eyebrow">Game Hub</p>
+            <h1>游戏大厅</h1>
+          </div>
+          <div class="profile-chip">
+            <span>当前玩家</span>
+            <strong id="profileName">玩家</strong>
+          </div>
+        </header>
+        <div class="game-grid" aria-label="游戏列表">
+          <button id="startGomoku" class="game-card" type="button">
+            <span class="game-card-title">五子棋</span>
+            <span class="game-card-meta">本地双人 / 人机 / 好友联机</span>
+            <span class="game-card-action">开始游戏</span>
+          </button>
+          <div class="game-card coming-soon" aria-label="更多游戏开发中">
+            <span class="game-card-title">更多游戏</span>
+            <span class="game-card-meta">以后可以继续添加象棋、井字棋等。</span>
+            <span class="game-card-action">开发中</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <main id="gameView" class="app" hidden>
       <section class="play-area" aria-label="五子棋棋盘">
         <canvas id="board" width="760" height="760"></canvas>
       </section>
@@ -19,7 +59,10 @@
               <p class="eyebrow">Gomoku</p>
               <h1>五子棋</h1>
             </div>
-            <button id="themeToggle" class="theme-toggle" type="button" aria-label="切换深色模式">黑色</button>
+            <div class="title-actions">
+              <button id="backLobby" class="secondary-button lobby-button" type="button">大厅</button>
+              <button id="themeToggle" class="theme-toggle" type="button" aria-label="切换深色模式">黑色</button>
+            </div>
           </div>
         </header>
 

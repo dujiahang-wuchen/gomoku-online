@@ -37,6 +37,14 @@ const chatMessagesBox = document.querySelector("#chatMessages");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const sendChatButton = document.querySelector("#sendChat");
+const loginView = document.querySelector("#loginView");
+const lobbyView = document.querySelector("#lobbyView");
+const gameView = document.querySelector("#gameView");
+const guestNameInput = document.querySelector("#guestNameInput");
+const enterLobbyButton = document.querySelector("#enterLobby");
+const profileName = document.querySelector("#profileName");
+const startGomokuButton = document.querySelector("#startGomoku");
+const backLobbyButton = document.querySelector("#backLobby");
 
 const size = 15;
 const cell = boardCanvas.width / (size + 1);
@@ -51,6 +59,7 @@ const activeRoomKey = "gomokuActiveRoom";
 const roomStatePrefix = "gomokuRoomState:";
 const localSnapshotKey = "gomokuLocalGame";
 const nicknameKey = "gomokuNickname";
+const profileReadyKey = "gomokuProfileReady";
 
 let board = createBoard();
 let current = black;
@@ -96,9 +105,11 @@ if (!serverClientId) {
 
 playerNickname = normalizeNickname(playerNickname) || `玩家${serverClientId.slice(-4)}`;
 nicknameInput.value = playerNickname;
+guestNameInput.value = playerNickname;
 localStorage.setItem(nicknameKey, playerNickname);
 
 applyTheme();
+refreshProfileUi();
 
 function createClientId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -124,7 +135,43 @@ function currentNickname() {
 function saveNickname() {
   playerNickname = currentNickname();
   nicknameInput.value = playerNickname;
+  guestNameInput.value = playerNickname;
   localStorage.setItem(nicknameKey, playerNickname);
+  refreshProfileUi();
+}
+
+function refreshProfileUi() {
+  const name = currentNickname();
+  profileName.textContent = name;
+  if (document.activeElement !== guestNameInput) guestNameInput.value = name;
+}
+
+function setView(view) {
+  loginView.hidden = view !== "login";
+  lobbyView.hidden = view !== "lobby";
+  gameView.hidden = view !== "game";
+  document.body.dataset.view = view;
+  refreshProfileUi();
+  if (view === "game") render();
+}
+
+function showLogin() {
+  setView("login");
+}
+
+function showLobby() {
+  setView("lobby");
+}
+
+function showGame() {
+  setView("game");
+}
+
+function enterLobby() {
+  playerNickname = normalizeNickname(guestNameInput.value) || currentNickname();
+  saveNickname();
+  localStorage.setItem(profileReadyKey, "true");
+  showLobby();
 }
 
 function createScores() {
@@ -482,6 +529,7 @@ function render() {
   connectionText.textContent = connectionState;
   roomMeta.textContent = roomMetaText();
   if (document.activeElement !== nicknameInput) nicknameInput.value = currentNickname();
+  refreshProfileUi();
   chatStatus.textContent = chatStatusText();
   sendChatButton.disabled = !canChat() || !chatInput.value.trim();
   chatInput.disabled = !canChat();
@@ -1890,6 +1938,12 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
   applyTheme();
   render();
 });
+enterLobbyButton.addEventListener("click", enterLobby);
+guestNameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") enterLobby();
+});
+startGomokuButton.addEventListener("click", showGame);
+backLobbyButton.addEventListener("click", showLobby);
 newGameButton.addEventListener("click", newGameAction);
 undoButton.addEventListener("click", undoMove);
 clearScoreButton.addEventListener("click", clearScoreRecord);
@@ -1929,6 +1983,7 @@ chatInput.addEventListener("input", render);
 nicknameInput.addEventListener("input", () => {
   playerNickname = normalizeNickname(nicknameInput.value);
   localStorage.setItem(nicknameKey, playerNickname);
+  refreshProfileUi();
   render();
 });
 nicknameInput.addEventListener("blur", saveNickname);
@@ -1959,10 +2014,17 @@ const initialRoom =
   localStorage.getItem(activeRoomKey) ||
   sessionStorage.getItem(activeRoomKey);
 if (isServerPage() && initialRoom) {
+  localStorage.setItem(profileReadyKey, "true");
+  showGame();
   joinServerRoom(initialRoom).catch((error) => {
     connectionState = `加入失败：${error.message}`;
     render();
   });
 } else {
   if (!restoreLocalSnapshot()) resetGame();
+  if (localStorage.getItem(profileReadyKey) === "true") {
+    showLobby();
+  } else {
+    showLogin();
+  }
 }
