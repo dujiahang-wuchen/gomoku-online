@@ -132,11 +132,13 @@ select {
   margin-bottom: 24px;
 }
 
-.profile-chip {
-  min-width: 132px;
+.profile-panel {
+  width: min(260px, 100%);
+  display: grid;
+  gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 12px;
   color: var(--muted);
   background: var(--field-bg);
   font-size: var(--ui-meta-size);
@@ -144,11 +146,34 @@ select {
   line-height: 1.45;
 }
 
-.profile-chip strong {
-  display: block;
-  margin-top: 2px;
+.profile-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-edit input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
   color: var(--ink);
-  font-size: 15px;
+  background: var(--surface-strong);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.profile-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.profile-button {
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .game-grid {
@@ -248,7 +273,26 @@ canvas {
 
 .title-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.game-profile-name {
+  max-width: 120px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--field-bg);
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .theme-toggle,
@@ -813,6 +857,10 @@ textarea {
     gap: 14px;
   }
 
+  .profile-panel {
+    width: 100%;
+  }
+
   .game-grid {
     grid-template-columns: 1fr;
   }
@@ -885,6 +933,10 @@ textarea {
 
   .title-actions {
     justify-content: start;
+  }
+
+  .game-profile-name {
+    max-width: 100%;
   }
 
   .theme-toggle,

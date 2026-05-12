@@ -42,7 +42,11 @@ const lobbyView = document.querySelector("#lobbyView");
 const gameView = document.querySelector("#gameView");
 const guestNameInput = document.querySelector("#guestNameInput");
 const enterLobbyButton = document.querySelector("#enterLobby");
-const profileName = document.querySelector("#profileName");
+const profileNameInput = document.querySelector("#profileNameInput");
+const saveProfileButton = document.querySelector("#saveProfile");
+const logoutLobbyButton = document.querySelector("#logoutLobby");
+const logoutGameButton = document.querySelector("#logoutGame");
+const gameProfileName = document.querySelector("#gameProfileName");
 const startGomokuButton = document.querySelector("#startGomoku");
 const backLobbyButton = document.querySelector("#backLobby");
 
@@ -136,14 +140,16 @@ function saveNickname() {
   playerNickname = currentNickname();
   nicknameInput.value = playerNickname;
   guestNameInput.value = playerNickname;
+  profileNameInput.value = playerNickname;
   localStorage.setItem(nicknameKey, playerNickname);
   refreshProfileUi();
 }
 
 function refreshProfileUi() {
   const name = currentNickname();
-  profileName.textContent = name;
   if (document.activeElement !== guestNameInput) guestNameInput.value = name;
+  if (document.activeElement !== profileNameInput) profileNameInput.value = name;
+  gameProfileName.textContent = name;
 }
 
 function setView(view) {
@@ -172,6 +178,27 @@ function enterLobby() {
   saveNickname();
   localStorage.setItem(profileReadyKey, "true");
   showLobby();
+}
+
+function saveProfileFromLobby() {
+  playerNickname = normalizeNickname(profileNameInput.value) || currentNickname();
+  saveNickname();
+  showNotice("昵称已保存");
+  render();
+}
+
+function logoutProfile() {
+  const ok = window.confirm("确定退出登录吗？本地棋局和战绩会保留。");
+  if (!ok) return;
+  localStorage.removeItem(profileReadyKey);
+  saveNickname();
+  if (isServerGame()) leaveServerRoom("已退出好友房间");
+  if (isRemoteGame()) {
+    closePeer();
+    localRemoteColor = null;
+    connectionState = "已断开连接";
+  }
+  showLogin();
 }
 
 function createScores() {
@@ -1942,6 +1969,18 @@ enterLobbyButton.addEventListener("click", enterLobby);
 guestNameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") enterLobby();
 });
+saveProfileButton.addEventListener("click", saveProfileFromLobby);
+profileNameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") saveProfileFromLobby();
+});
+profileNameInput.addEventListener("input", () => {
+  playerNickname = normalizeNickname(profileNameInput.value);
+  localStorage.setItem(nicknameKey, playerNickname);
+  refreshProfileUi();
+});
+profileNameInput.addEventListener("blur", saveNickname);
+logoutLobbyButton.addEventListener("click", logoutProfile);
+logoutGameButton.addEventListener("click", logoutProfile);
 startGomokuButton.addEventListener("click", showGame);
 backLobbyButton.addEventListener("click", showLobby);
 newGameButton.addEventListener("click", newGameAction);

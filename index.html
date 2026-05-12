@@ -27,9 +27,15 @@
             <p class="eyebrow">Game Hub</p>
             <h1>游戏大厅</h1>
           </div>
-          <div class="profile-chip">
-            <span>当前玩家</span>
-            <strong id="profileName">玩家</strong>
+          <div class="profile-panel">
+            <label class="profile-edit">
+              <span>当前玩家</span>
+              <input id="profileNameInput" type="text" maxlength="16" autocomplete="nickname" />
+            </label>
+            <div class="profile-actions">
+              <button id="saveProfile" class="secondary-button profile-button" type="button">保存昵称</button>
+              <button id="logoutLobby" class="secondary-button profile-button" type="button">退出登录</button>
+            </div>
           </div>
         </header>
         <div class="game-grid" aria-label="游戏列表">
@@ -60,7 +66,9 @@
               <h1>五子棋</h1>
             </div>
             <div class="title-actions">
+              <span id="gameProfileName" class="game-profile-name">玩家</span>
               <button id="backLobby" class="secondary-button lobby-button" type="button">大厅</button>
+              <button id="logoutGame" class="secondary-button lobby-button" type="button">退出</button>
               <button id="themeToggle" class="theme-toggle" type="button" aria-label="切换深色模式">黑色</button>
             </div>
           </div>
