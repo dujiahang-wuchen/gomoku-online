@@ -423,15 +423,15 @@ select {
 
 .chat {
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 22px;
+  padding: 22px;
 }
 
 .chat-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 14px;
   padding: 0 2px;
 }
 
@@ -444,7 +444,7 @@ select {
 }
 
 .chat-messages {
-  min-height: 102px;
+  min-height: 116px;
   max-height: 150px;
   overflow: auto;
   display: grid;
@@ -452,7 +452,7 @@ select {
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 16px;
+  padding: 20px;
   background: var(--field-bg);
 }
 
@@ -499,16 +499,16 @@ select {
 
 .chat-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  gap: 14px;
 }
 
 .chat-form input {
   min-width: 0;
-  min-height: 48px;
+  min-height: 54px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px 16px;
+  padding: 15px 18px;
   color: var(--ink);
   background: var(--field-bg);
   font: inherit;
@@ -516,7 +516,7 @@ select {
 }
 
 .chat-form button {
-  min-height: 48px;
+  min-height: 54px;
   font-size: 13px;
 }
 
@@ -723,6 +723,16 @@ textarea {
   .chat,
   .moves-panel {
     padding: 16px;
+  }
+
+  .chat {
+    gap: 18px;
+    padding: 20px;
+  }
+
+  .chat-messages {
+    min-height: 116px;
+    padding: 20px;
   }
 
   .invite-actions {

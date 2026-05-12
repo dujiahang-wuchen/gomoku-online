@@ -53,7 +53,10 @@ let board = createBoard();
 let current = black;
 let winner = empty;
 let moves = [];
-let scores = { [black]: 0, [white]: 0 };
+let localScores = createScores();
+let aiScores = createScores();
+let roomScores = createScores();
+let scores = localScores;
 let undoQuota = { [black]: 3, [white]: 3 };
 let lastMove = null;
 let winningLine = [];
@@ -119,6 +122,38 @@ function saveNickname() {
   playerNickname = currentNickname();
   nicknameInput.value = playerNickname;
   localStorage.setItem(nicknameKey, playerNickname);
+}
+
+function createScores() {
+  return { [black]: 0, [white]: 0 };
+}
+
+function normalizeScores(nextScores) {
+  return {
+    [black]: Number(nextScores?.[black] || 0),
+    [white]: Number(nextScores?.[white] || 0),
+  };
+}
+
+function isRoomScoreMode() {
+  return Boolean(localRemoteColor || serverRoom || peer || channel);
+}
+
+function useCurrentScores() {
+  scores = isRoomScoreMode() ? roomScores : aiToggle.checked ? aiScores : localScores;
+}
+
+function replaceScores(nextScores) {
+  scores = normalizeScores(nextScores);
+  if (isRoomScoreMode()) {
+    roomScores = scores;
+    return;
+  }
+  if (aiToggle.checked) {
+    aiScores = scores;
+  } else {
+    localScores = scores;
+  }
 }
 
 function createBoard() {
@@ -695,7 +730,7 @@ function resetGame(keepScore = true) {
   winnerPromptDismissed = false;
   winnerPromptReady = false;
   clearWinnerPromptTimer();
-  if (!keepScore) scores = { [black]: 0, [white]: 0 };
+  if (!keepScore) replaceScores(createScores());
   render();
   saveRoomSnapshot();
   queueAiMove();
@@ -714,7 +749,7 @@ function swapLocalColor() {
 }
 
 function swapColorScores() {
-  scores = { [black]: scores[white] || 0, [white]: scores[black] || 0 };
+  replaceScores({ [black]: scores[white] || 0, [white]: scores[black] || 0 });
 }
 
 function newGameAction() {
@@ -1018,6 +1053,8 @@ function currentLocalState() {
     aiEnabled: aiToggle.checked,
     aiLevel: aiLevelSelect.value,
     playerColorValue: playerColorSelect.value,
+    localScores,
+    aiScores,
   };
 }
 
@@ -1079,9 +1116,12 @@ function loadLocalSnapshot() {
 function restoreLocalSnapshot() {
   const snapshot = loadLocalSnapshot();
   if (!snapshot || !snapshot.board || !Array.isArray(snapshot.moves)) return false;
+  if (snapshot.localScores) localScores = normalizeScores(snapshot.localScores);
+  if (snapshot.aiScores) aiScores = normalizeScores(snapshot.aiScores);
   aiToggle.checked = Boolean(snapshot.aiEnabled);
   aiLevelSelect.value = snapshot.aiLevel || "normal";
   playerColorSelect.value = snapshot.playerColorValue || "black";
+  useCurrentScores();
   setGameState(snapshot);
   connectionState = "已恢复本地棋局";
   render();
@@ -1128,6 +1168,8 @@ async function joinServerRoom(roomId) {
   serverPlayers = joined.players;
   serverOnline = joined.online || 0;
   localRemoteColor = joined.color === "black" ? black : white;
+  roomScores = createScores();
+  scores = roomScores;
   setChatMessages(joined.chat || []);
   if (joined.state) {
     setGameState(joined.state);
@@ -1416,7 +1458,7 @@ function setGameState(state) {
   board = state.board;
   current = state.current;
   winner = state.winner;
-  scores = state.scores || { [black]: 0, [white]: 0 };
+  replaceScores(state.scores || createScores());
   if (state.undoQuota) undoQuota = state.undoQuota;
   moves = state.moves;
   lastMove = state.lastMove;
@@ -1565,6 +1607,7 @@ function leaveServerRoom(message = "未连接") {
   connectionRole = null;
   connectionState = message;
   chatMessages = [];
+  useCurrentScores();
   forgetActiveRoom();
   hideNotice();
   if (isServerPage()) {
@@ -1671,7 +1714,7 @@ function applyPeerSync(message) {
   board = message.board;
   current = message.current;
   winner = message.winner;
-  scores = message.scores;
+  replaceScores(message.scores);
   if (message.undoQuota) undoQuota = message.undoQuota;
   moves = message.moves;
   lastMove = message.lastMove;
@@ -1798,10 +1841,12 @@ winnerDialog.addEventListener("click", (event) => {
 });
 aiToggle.addEventListener("change", () => {
   if (aiToggle.checked && isServerGame()) leaveServerRoom("已退出好友房间");
+  useCurrentScores();
   resetGame(true);
 });
 playerColorSelect.addEventListener("change", () => {
   if (isServerGame()) leaveServerRoom("已退出好友房间");
+  useCurrentScores();
   resetGame(true);
 });
 aiLevelSelect.addEventListener("change", () => {
@@ -1834,6 +1879,7 @@ leaveRoomButton.addEventListener("click", () => {
     closePeer();
     localRemoteColor = null;
     connectionState = "已断开连接";
+    useCurrentScores();
   }
   render();
 });
