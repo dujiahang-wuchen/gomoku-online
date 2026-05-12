@@ -44,6 +44,8 @@ const origin = cell;
 const empty = 0;
 const black = 1;
 const white = 2;
+const humanScoreKey = "human";
+const computerScoreKey = "computer";
 const winnerPromptDelay = 2200;
 const activeRoomKey = "gomokuActiveRoom";
 const roomStatePrefix = "gomokuRoomState:";
@@ -55,7 +57,7 @@ let current = black;
 let winner = empty;
 let moves = [];
 let localScores = createScores();
-let aiScores = createScores();
+let aiScores = createAiScores();
 let roomScores = createScores();
 let scores = localScores;
 let undoQuota = { [black]: 3, [white]: 3 };
@@ -129,10 +131,21 @@ function createScores() {
   return { [black]: 0, [white]: 0 };
 }
 
+function createAiScores() {
+  return { [humanScoreKey]: 0, [computerScoreKey]: 0 };
+}
+
 function normalizeScores(nextScores) {
   return {
     [black]: Number(nextScores?.[black] || 0),
     [white]: Number(nextScores?.[white] || 0),
+  };
+}
+
+function normalizeAiScores(nextScores) {
+  return {
+    [humanScoreKey]: Number(nextScores?.[humanScoreKey] || 0),
+    [computerScoreKey]: Number(nextScores?.[computerScoreKey] || 0),
   };
 }
 
@@ -145,14 +158,16 @@ function useCurrentScores() {
 }
 
 function replaceScores(nextScores) {
-  scores = normalizeScores(nextScores);
   if (isRoomScoreMode()) {
+    scores = normalizeScores(nextScores);
     roomScores = scores;
     return;
   }
   if (aiToggle.checked) {
+    scores = normalizeAiScores(nextScores);
     aiScores = scores;
   } else {
+    scores = normalizeScores(nextScores);
     localScores = scores;
   }
 }
@@ -355,7 +370,7 @@ function place(row, col, color, options = {}) {
   if (hasFive(row, col, color)) {
     winner = color;
     winningLine = findWinningLine(row, col, color);
-    scores[color] += 1;
+    recordWin(color);
     prepareWinnerPrompt();
   } else if (moves.length === size * size) {
     winner = -1;
@@ -372,6 +387,15 @@ function place(row, col, color, options = {}) {
     sendPeerMessage({ type: "move", row, col, color });
   }
   return true;
+}
+
+function recordWin(color) {
+  if (aiToggle.checked && !isRoomScoreMode()) {
+    const key = color === playerColor() ? humanScoreKey : computerScoreKey;
+    scores[key] += 1;
+    return;
+  }
+  scores[color] += 1;
 }
 
 function hasFive(row, col, color) {
@@ -645,8 +669,8 @@ function updateScoreboard() {
     const computerColor = aiColor();
     blackScoreLabel.textContent = `我（${colorName(humanColor)}）`;
     whiteScoreLabel.textContent = `电脑（${colorName(computerColor)}）`;
-    blackScoreText.textContent = scores[humanColor] || 0;
-    whiteScoreText.textContent = scores[computerColor] || 0;
+    blackScoreText.textContent = scores[humanScoreKey] || 0;
+    whiteScoreText.textContent = scores[computerScoreKey] || 0;
     return;
   }
   blackScoreLabel.textContent = "黑棋";
@@ -746,7 +770,7 @@ function resetGame(keepScore = true) {
   winnerPromptDismissed = false;
   winnerPromptReady = false;
   clearWinnerPromptTimer();
-  if (!keepScore) replaceScores(createScores());
+  if (!keepScore) replaceScores(aiToggle.checked && !isRoomScoreMode() ? createAiScores() : createScores());
   render();
   saveRoomSnapshot();
   queueAiMove();
@@ -772,7 +796,7 @@ function clearScoreRecord() {
   const mode = scoreModeLabel();
   const ok = window.confirm(`确定清空${mode}战绩吗？当前棋局不会被重开。`);
   if (!ok) return;
-  replaceScores(createScores());
+  replaceScores(aiToggle.checked && !isRoomScoreMode() ? createAiScores() : createScores());
   saveRoomSnapshot();
   if (isServerGame()) sendServerState();
   if (isRemoteGame()) sendPeerMessage({ type: "sync", ...currentGameState() });
@@ -937,10 +961,15 @@ function rejectRemoteUndo(requestId, options = {}) {
 }
 
 function queueAiMove() {
-  if (isRemoteGame() || !isAiTurn()) return;
+  if (aiThinking || isRemoteGame() || !isAiTurn()) return;
   aiThinking = true;
   render();
   window.setTimeout(() => {
+    if (!isAiTurn()) {
+      aiThinking = false;
+      render();
+      return;
+    }
     const move = bestAiMove(aiColor());
     aiThinking = false;
     if (move) place(move.row, move.col, aiColor());
@@ -1146,7 +1175,7 @@ function restoreLocalSnapshot() {
   const snapshot = loadLocalSnapshot();
   if (!snapshot || !snapshot.board || !Array.isArray(snapshot.moves)) return false;
   if (snapshot.localScores) localScores = normalizeScores(snapshot.localScores);
-  if (snapshot.aiScores) aiScores = normalizeScores(snapshot.aiScores);
+  if (snapshot.aiScores) aiScores = normalizeAiScores(snapshot.aiScores);
   aiToggle.checked = Boolean(snapshot.aiEnabled);
   aiLevelSelect.value = snapshot.aiLevel || "normal";
   playerColorSelect.value = snapshot.playerColorValue || "black";
