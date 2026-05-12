@@ -37,7 +37,8 @@
           <button id="undo" type="button">悔棋</button>
         </div>
 
-        <div class="settings" aria-label="设置">
+        <details class="settings collapsible" aria-label="设置" open>
+          <summary>设置</summary>
           <label class="toggle">
             <input id="aiToggle" type="checkbox" />
             <span>人机对弈</span>
@@ -57,9 +58,10 @@
               <option value="hard">困难</option>
             </select>
           </label>
-        </div>
+        </details>
 
-        <div class="invite" aria-label="邀请好友对决">
+        <details class="invite collapsible" aria-label="邀请好友对决" open>
+          <summary>好友对决</summary>
           <div class="invite-head">
             <div>
               <p class="label">好友对决</p>
@@ -88,9 +90,10 @@
             <textarea id="answerCode" rows="3" spellcheck="false"></textarea>
           </label>
           <p class="hint">用服务器打开时，创建邀请会生成链接，好友打开即可加入。</p>
-        </div>
+        </details>
 
-        <div class="chat" aria-label="房间聊天">
+        <details class="chat collapsible" aria-label="房间聊天" open>
+          <summary>房间聊天</summary>
           <div class="chat-head">
             <p class="label">房间聊天</p>
             <p id="chatStatus" class="chat-status">联机后可聊天</p>
@@ -100,20 +103,23 @@
             <input id="chatInput" type="text" maxlength="160" placeholder="输入消息" autocomplete="off" />
             <button id="sendChat" type="submit">发送</button>
           </form>
-        </div>
+        </details>
 
         <div class="score">
           <div>
-            <span class="score-label">黑棋</span>
+            <span id="blackScoreLabel" class="score-label">黑棋</span>
             <strong id="blackScore">0</strong>
           </div>
           <div>
-            <span class="score-label">白棋</span>
+            <span id="whiteScoreLabel" class="score-label">白棋</span>
             <strong id="whiteScore">0</strong>
           </div>
         </div>
 
-        <ol id="moveList" class="moves" aria-label="落子记录"></ol>
+        <details class="moves-panel collapsible" aria-label="落子记录" open>
+          <summary>落子记录</summary>
+          <ol id="moveList" class="moves"></ol>
+        </details>
       </aside>
     </main>
 

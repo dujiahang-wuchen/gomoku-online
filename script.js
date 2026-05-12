@@ -9,6 +9,8 @@ const undoButton = document.querySelector("#undo");
 const aiToggle = document.querySelector("#aiToggle");
 const aiLevelSelect = document.querySelector("#aiLevel");
 const playerColorSelect = document.querySelector("#playerColor");
+const blackScoreLabel = document.querySelector("#blackScoreLabel");
+const whiteScoreLabel = document.querySelector("#whiteScoreLabel");
 const blackScoreText = document.querySelector("#blackScore");
 const whiteScoreText = document.querySelector("#whiteScore");
 const moveList = document.querySelector("#moveList");
@@ -90,6 +92,7 @@ playerNickname = normalizeNickname(playerNickname) || `玩家${serverClientId.sl
 nicknameInput.value = playerNickname;
 localStorage.setItem(nicknameKey, playerNickname);
 
+setupCollapsiblePanels();
 applyTheme();
 
 function createClientId() {
@@ -117,6 +120,13 @@ function saveNickname() {
   playerNickname = currentNickname();
   nicknameInput.value = playerNickname;
   localStorage.setItem(nicknameKey, playerNickname);
+}
+
+function setupCollapsiblePanels() {
+  if (!window.matchMedia("(max-width: 900px)").matches) return;
+  for (const panel of document.querySelectorAll(".settings, .chat, .moves-panel")) {
+    panel.removeAttribute("open");
+  }
 }
 
 function createBoard() {
@@ -393,8 +403,7 @@ function render() {
   drawBoard();
   updateStatus();
   updateMoves();
-  blackScoreText.textContent = scores[black];
-  whiteScoreText.textContent = scores[white];
+  updateScoreboard();
   newGameButton.disabled = aiThinking || rematchPending;
   newGameButton.textContent = rematchPending ? "等待回应" : "新局";
   undoButton.disabled = moves.length === 0 || aiThinking || undoPending || !canUndoNow();
@@ -580,6 +589,20 @@ function updateStatus() {
   statusText.textContent = aiThinking ? "电脑思考中" : `${colorName(current)}落子`;
 }
 
+function updateScoreboard() {
+  if (isServerGame() || isRemoteGame()) {
+    blackScoreLabel.textContent = `我（${colorName(localRemoteColor)}）`;
+    whiteScoreLabel.textContent = `对方（${colorName(opponent(localRemoteColor))}）`;
+    blackScoreText.textContent = scores[localRemoteColor] || 0;
+    whiteScoreText.textContent = scores[opponent(localRemoteColor)] || 0;
+    return;
+  }
+  blackScoreLabel.textContent = "黑棋";
+  whiteScoreLabel.textContent = "白棋";
+  blackScoreText.textContent = scores[black] || 0;
+  whiteScoreText.textContent = scores[white] || 0;
+}
+
 function updateMoves() {
   moveList.innerHTML = "";
   const recent = moves.slice(-12);
@@ -689,6 +712,10 @@ function swapLocalColor() {
   localRemoteColor = opponent(localRemoteColor);
 }
 
+function swapColorScores() {
+  scores = { [black]: scores[white] || 0, [white]: scores[black] || 0 };
+}
+
 function newGameAction() {
   if (isServerGame() || isRemoteGame()) {
     requestRematch();
@@ -699,9 +726,9 @@ function newGameAction() {
 
 function requestRematch() {
   if (rematchPending) return;
-  if (isServerGame() && serverPlayers < 2) {
+  if (isServerGame() && serverOnline < 2) {
     resetAndShare();
-    connectionState = "已开始新局";
+    connectionState = "对方离线，已直接开始新局";
     render();
     return;
   }
@@ -1278,7 +1305,10 @@ function handleRematchEvent(event) {
   if (event.type === "rematch-accepted") {
     rematchPending = false;
     rematchRequestId = null;
-    if (event.swapColors) swapLocalColor();
+    if (event.swapColors) {
+      swapLocalColor();
+      swapColorScores();
+    }
     applyServerState(event);
     connectionState = "对方同意再来一局";
     render();
@@ -1309,6 +1339,7 @@ function receiveRematchRequest(event) {
 
 function approveRematch(requestId) {
   swapLocalColor();
+  swapColorScores();
   resetGame(true);
   connectionState = "已同意再来一局";
   const message = {
@@ -1384,7 +1415,7 @@ function setGameState(state) {
   board = state.board;
   current = state.current;
   winner = state.winner;
-  scores = state.scores;
+  scores = state.scores || { [black]: 0, [white]: 0 };
   if (state.undoQuota) undoQuota = state.undoQuota;
   moves = state.moves;
   lastMove = state.lastMove;

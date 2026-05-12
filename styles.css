@@ -150,11 +150,37 @@ h1 {
 .invite,
 .chat,
 .score,
-.moves {
+.moves-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   backdrop-filter: blur(14px);
+}
+
+.collapsible > summary {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible > summary::after {
+  content: "收起";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collapsible:not([open]) > summary::after {
+  content: "展开";
 }
 
 .status-card {
@@ -264,6 +290,20 @@ button:disabled {
   display: grid;
   gap: 12px;
   padding: 14px;
+}
+
+.settings > summary,
+.invite > summary,
+.chat > summary,
+.moves-panel > summary {
+  margin-bottom: 4px;
+}
+
+.settings:not([open]),
+.invite:not([open]),
+.chat:not([open]),
+.moves-panel:not([open]) {
+  display: block;
 }
 
 .toggle,
@@ -491,6 +531,10 @@ textarea {
   color: var(--muted);
 }
 
+.moves-panel {
+  padding: 14px;
+}
+
 .moves li {
   padding: 4px 0;
 }
@@ -574,8 +618,8 @@ textarea {
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--mobile-board-bar);
-    backdrop-filter: blur(10px);
+    background: transparent;
+    backdrop-filter: none;
     padding-top: 8px;
   }
 
@@ -594,7 +638,7 @@ textarea {
   .invite,
   .chat,
   .score,
-  .moves {
+  .moves-panel {
     background: var(--mobile-surface);
   }
 
@@ -628,6 +672,12 @@ textarea {
 
   button {
     min-height: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 
   .settings,

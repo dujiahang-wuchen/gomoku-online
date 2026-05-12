@@ -123,9 +123,11 @@ function playerCount(room) {
 
 function activePlayerCount(room) {
   const now = Date.now();
-  return Object.values(room.players).filter(
-    (player) => !player.left && (player.online || now - (player.lastSeen || 0) < 12_000)
-  ).length;
+  return Object.values(room.players).filter((player) => isPlayerActive(player, now)).length;
+}
+
+function isPlayerActive(player, now = Date.now()) {
+  return !player.left && (player.online || now - (player.lastSeen || 0) < 12_000);
 }
 
 function touchPlayer(room, clientId) {
@@ -209,9 +211,10 @@ const server = http.createServer(async (req, res) => {
 
       if (!room.players[clientId]) {
         if (playerCount(room) >= 2) {
+          const now = Date.now();
           const offlineClientId =
-            Object.keys(room.players).find((id) => !room.players[id].online && room.players[id].color === "white") ||
-            Object.keys(room.players).find((id) => !room.players[id].online);
+            Object.keys(room.players).find((id) => !isPlayerActive(room.players[id], now) && room.players[id].color === "white") ||
+            Object.keys(room.players).find((id) => !isPlayerActive(room.players[id], now));
           if (!offlineClientId) {
             json(res, 403, { error: "房间已有两位在线玩家，请让房主重新创建邀请" });
             return;
