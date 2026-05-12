@@ -298,33 +298,71 @@ canvas {
 
 .title-row {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .title-row > div:first-child {
   min-width: 0;
 }
 
+.title-menu {
+  order: -1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+}
+
+.title-menu > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.title-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.title-menu > summary span {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.title-menu > summary::after {
+  content: "展开";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.title-menu[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.title-menu[open] > summary::after {
+  content: "收起";
+}
+
 .title-actions {
   display: grid;
-  order: -1;
-  grid-template-columns: minmax(86px, 1.25fr) repeat(3, minmax(54px, 0.85fr));
-  align-items: center;
-  gap: 8px;
-  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
 }
 
 .game-profile-name {
+  max-width: 136px;
   min-height: 38px;
   display: inline-flex;
-  justify-content: center;
   align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--muted);
-  background: var(--field-bg);
-  font-size: 12px;
+  color: var(--accent-dark);
+  font-size: 13px;
   font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -336,7 +374,7 @@ canvas {
   min-height: 38px;
   min-width: 0;
   width: 100%;
-  padding: 0 8px;
+  padding: 0 10px;
   font-size: 12px;
 }
 
@@ -970,7 +1008,7 @@ textarea {
   }
 
   .title-actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .game-profile-name {
