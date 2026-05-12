@@ -5,7 +5,9 @@
   "description": "一个支持本地、人机和好友房间对战的五子棋小游戏。",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check script.js && node --check server.js && node --check tunnel.js",
+    "check": "node --check script.js && node --check server.js && node --check tunnel.js && node --check worker.mjs && node scripts/build-worker-assets.js",
+    "build:worker": "node scripts/build-worker-assets.js",
+    "deploy:cloudflare": "npm run build:worker && npx wrangler deploy",
     "tunnel": "cloudflared tunnel --url http://localhost:5173",
     "tunnel:local": "node tunnel.js"
   },

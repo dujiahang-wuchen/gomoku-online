@@ -2,7 +2,7 @@
 
 一个可以在浏览器里玩的小游戏大厅，目前内置五子棋，支持本地双人、人机对弈、好友房间链接对战。
 
-项目当前适合学习、练手和临时和朋友对战。如果想长期稳定给朋友玩，建议后续部署到 Render、Railway、Fly.io 等云平台。
+项目当前适合学习、练手和临时和朋友对战。如果想长期稳定给朋友玩，可以部署到 Render 或 Cloudflare Workers。
 
 ## 主要功能
 
@@ -33,6 +33,7 @@
 - 手机布局和触控落点优化
 - 手机端支持折叠设置、好友、聊天和落子记录面板
 - 支持 Cloudflare Tunnel 生成临时公网链接
+- 支持 Cloudflare Workers + Durable Objects 固定公网部署
 
 ## 运行环境
 
@@ -136,6 +137,32 @@ https://xxxx.trycloudflare.com
 
 注意：Cloudflare Tunnel 免费临时链接不稳定，电脑关机、网络断开、隧道进程关闭或 Cloudflare 回收后，旧链接就会失效。失效后需要重新运行 `npm run tunnel` 生成新链接。
 
+## Cloudflare Workers 固定部署
+
+如果 Render 要求绑卡或部署不成功，可以改用 Cloudflare Workers。项目已经内置 `worker.mjs` 和 `wrangler.toml`，好友房间会通过 Durable Objects 保持实时同步。
+
+首次部署前，先登录 Cloudflare：
+
+```bash
+npx wrangler login
+```
+
+部署：
+
+```bash
+npm run deploy:cloudflare
+```
+
+部署成功后，终端会显示一个类似这样的固定链接：
+
+```text
+https://gomoku-online.你的账号.workers.dev
+```
+
+双方打开这个链接即可创建邀请、复制房间链接并联机对战。
+
+说明：Cloudflare 免费额度适合个人练手和少量好友对战。如果访问量很大，后续需要关注 Cloudflare 账号里的用量限制。
+
 ## 常见问题
 
 ### 手机打不开局域网地址
@@ -196,6 +223,8 @@ styles.css      页面样式
 script.js       棋盘、人机、联机前端逻辑
 server.js       本地服务器和好友房间同步
 tunnel.js       localtunnel 备用脚本
+worker.mjs      Cloudflare Workers 好友房间同步
+wrangler.toml   Cloudflare Workers 部署配置
 package.json    项目命令和依赖
 ```
 
