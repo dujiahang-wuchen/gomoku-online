@@ -25,6 +25,17 @@
   --accent-dark: #215a4b;
   --white-stone: #f7f7f2;
   --black-stone: #15191d;
+  --panel-pad: 22px;
+  --panel-pad-mobile: 20px;
+  --section-gap: 18px;
+  --field-gap: 12px;
+  --field-height: 52px;
+  --field-pad-y: 14px;
+  --field-pad-x: 18px;
+  --message-pad: 20px;
+  --message-gap: 12px;
+  --ui-label-size: 13px;
+  --ui-meta-size: 12px;
   font-family:
     Inter, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui,
     sans-serif;
@@ -219,7 +230,9 @@ h1 {
 .score-label {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--ui-label-size);
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .status {
@@ -344,8 +357,8 @@ select {
 
 .invite {
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: var(--section-gap);
+  padding: var(--panel-pad);
 }
 
 .invite-head {
@@ -359,36 +372,37 @@ select {
 .connection {
   margin: 2px 0 0;
   font-weight: 800;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 .room-meta {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: var(--ui-meta-size);
+  line-height: 1.55;
 }
 
 .invite-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 12px;
-  margin-bottom: 6px;
+  gap: var(--field-gap);
+  margin-bottom: 4px;
 }
 
 .invite-actions button {
-  min-height: 40px;
-  padding: 0 10px;
+  min-height: 44px;
+  padding: 0 12px;
   font-size: 13px;
 }
 
 .code-field,
 .nickname-field {
   display: grid;
-  gap: 12px;
+  gap: var(--field-gap);
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--ui-label-size);
   font-weight: 700;
+  line-height: 1.5;
 }
 
 .nickname-field + .code-field,
@@ -404,43 +418,43 @@ select {
 
 .nickname-field input {
   width: 100%;
-  min-height: 48px;
+  min-height: var(--field-height);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px 16px;
+  padding: var(--field-pad-y) var(--field-pad-x);
   color: var(--ink);
   background: var(--field-bg);
   font: inherit;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .hint {
   margin: 2px 2px 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--ui-meta-size);
   line-height: 1.65;
 }
 
 .chat {
   display: grid;
-  gap: 22px;
-  padding: 22px;
+  gap: var(--section-gap);
+  padding: var(--panel-pad);
 }
 
 .chat-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--field-gap);
   padding: 0 2px;
 }
 
 .chat-status {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--ui-meta-size);
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .chat-messages {
@@ -449,23 +463,23 @@ select {
   overflow: auto;
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: var(--message-gap);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 20px;
+  padding: var(--message-pad);
   background: var(--field-bg);
 }
 
 .chat-empty {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--ui-label-size);
+  line-height: 1.55;
 }
 
 .chat-message {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   justify-items: start;
 }
 
@@ -475,19 +489,20 @@ select {
 
 .chat-meta {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--ui-meta-size);
   font-weight: 700;
+  line-height: 1.45;
 }
 
 .chat-bubble {
-  max-width: 86%;
+  max-width: 88%;
   border-radius: 8px;
-  padding: 9px 11px;
+  padding: 11px 13px;
   color: var(--ink);
   background: var(--surface-strong);
   border: 1px solid var(--line);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--ui-label-size);
+  line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
@@ -499,24 +514,24 @@ select {
 
 .chat-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: var(--field-gap);
 }
 
 .chat-form input {
   min-width: 0;
-  min-height: 54px;
+  min-height: var(--field-height);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 15px 18px;
+  padding: var(--field-pad-y) var(--field-pad-x);
   color: var(--ink);
   background: var(--field-bg);
   font: inherit;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .chat-form button {
-  min-height: 54px;
+  min-height: var(--field-height);
   font-size: 13px;
 }
 
@@ -525,10 +540,10 @@ textarea {
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 15px 16px;
+  padding: var(--field-pad-y) var(--field-pad-x);
   color: var(--ink);
   background: var(--field-bg);
-  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .score {
@@ -725,14 +740,15 @@ textarea {
     padding: 16px;
   }
 
+  .invite,
   .chat {
-    gap: 18px;
-    padding: 20px;
+    gap: var(--section-gap);
+    padding: var(--panel-pad-mobile);
   }
 
   .chat-messages {
     min-height: 116px;
-    padding: 20px;
+    padding: var(--message-pad);
   }
 
   .invite-actions {
