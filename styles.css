@@ -297,9 +297,7 @@ canvas {
 }
 
 .title-row {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
+  display: grid;
   gap: 14px;
 }
 
@@ -308,16 +306,16 @@ canvas {
 }
 
 .title-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
 }
 
 .game-profile-name {
-  max-width: 120px;
   min-height: 38px;
   display: inline-flex;
+  justify-content: center;
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -334,8 +332,10 @@ canvas {
 .theme-toggle,
 .lobby-button {
   min-height: 38px;
-  min-width: 66px;
-  padding: 0 12px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 10px;
+  font-size: 13px;
 }
 
 .theme-toggle {
@@ -968,7 +968,7 @@ textarea {
   }
 
   .title-actions {
-    justify-content: start;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .game-profile-name {
