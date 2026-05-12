@@ -571,6 +571,17 @@ textarea {
   line-height: 1.35;
 }
 
+.clear-score {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  border-radius: 0;
+  font-size: 13px;
+}
+
 .moves {
   flex: 1;
   min-height: 126px;

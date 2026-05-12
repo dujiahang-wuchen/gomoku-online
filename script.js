@@ -13,6 +13,7 @@ const blackScoreLabel = document.querySelector("#blackScoreLabel");
 const whiteScoreLabel = document.querySelector("#whiteScoreLabel");
 const blackScoreText = document.querySelector("#blackScore");
 const whiteScoreText = document.querySelector("#whiteScore");
+const clearScoreButton = document.querySelector("#clearScore");
 const moveList = document.querySelector("#moveList");
 const createInviteButton = document.querySelector("#createInvite");
 const joinInviteButton = document.querySelector("#joinInvite");
@@ -154,6 +155,12 @@ function replaceScores(nextScores) {
   } else {
     localScores = scores;
   }
+}
+
+function scoreModeLabel() {
+  if (isServerGame() || isRemoteGame()) return "好友房间";
+  if (aiToggle.checked) return "人机对弈";
+  return "本地双人";
 }
 
 function createBoard() {
@@ -435,6 +442,7 @@ function render() {
   newGameButton.textContent = rematchPending ? "等待回应" : "新局";
   undoButton.disabled = moves.length === 0 || aiThinking || undoPending || !canUndoNow();
   undoButton.textContent = undoButtonText();
+  clearScoreButton.disabled = aiThinking || rematchPending;
   winnerRematchButton.disabled = rematchPending;
   winnerRematchButton.textContent = rematchPending ? "等待回应" : "再来一局";
   copyInviteButton.disabled = !inviteCode.value.trim();
@@ -750,6 +758,18 @@ function swapLocalColor() {
 
 function swapColorScores() {
   replaceScores({ [black]: scores[white] || 0, [white]: scores[black] || 0 });
+}
+
+function clearScoreRecord() {
+  const mode = scoreModeLabel();
+  const ok = window.confirm(`确定清空${mode}战绩吗？当前棋局不会被重开。`);
+  if (!ok) return;
+  replaceScores(createScores());
+  saveRoomSnapshot();
+  if (isServerGame()) sendServerState();
+  if (isRemoteGame()) sendPeerMessage({ type: "sync", ...currentGameState() });
+  showNotice(`${mode}战绩已清空`);
+  render();
 }
 
 function newGameAction() {
@@ -1834,6 +1854,7 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
 });
 newGameButton.addEventListener("click", newGameAction);
 undoButton.addEventListener("click", undoMove);
+clearScoreButton.addEventListener("click", clearScoreRecord);
 winnerRematchButton.addEventListener("click", newGameAction);
 winnerCloseButton.addEventListener("click", dismissWinnerPrompt);
 winnerDialog.addEventListener("click", (event) => {
