@@ -3,6 +3,7 @@ const contentTypeByExt = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
 };
+const roomTtlMs = 24 * 60 * 60 * 1000;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -48,7 +49,8 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "POST" && url.pathname === "/api/rooms") {
-      return json({ id: randomId(4) });
+      const id = randomId(4);
+      return roomStub(env, id).fetch(roomRequest(request, id, "/init"));
     }
 
     const joinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
@@ -93,6 +95,15 @@ export class Room {
     await this.loadRoom();
     const url = new URL(request.url);
 
+    if (url.pathname === "/init" && request.method === "POST") {
+      return this.init(url.searchParams.get("roomId"));
+    }
+
+    if (this.isExpired()) {
+      await this.expireRoom();
+      return json({ error: "房间已过期，请重新创建邀请" }, 410);
+    }
+
     if (url.pathname === "/join" && request.method === "POST") {
       return this.join(request);
     }
@@ -114,6 +125,9 @@ export class Room {
     this.room =
       (await this.state.storage.get("room")) || {
         id: "",
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        initialized: false,
         players: {},
         events: [],
         seq: 0,
@@ -124,6 +138,24 @@ export class Room {
     this.sockets = new Map();
   }
 
+  async init(roomId) {
+    const now = Date.now();
+    this.room = {
+      id: roomId,
+      createdAt: now,
+      lastActivity: now,
+      initialized: true,
+      players: {},
+      events: [],
+      seq: 0,
+      state: null,
+      chat: [],
+      firstColor: Math.random() < 0.5 ? "black" : "white",
+    };
+    await this.saveRoom();
+    return json({ id: roomId });
+  }
+
   async saveRoom() {
     const room = {
       ...this.room,
@@ -131,6 +163,26 @@ export class Room {
       chat: this.room.chat.slice(-80),
     };
     await this.state.storage.put("room", room);
+  }
+
+  isExpired() {
+    if (!this.room.initialized) return true;
+    return Date.now() - (this.room.lastActivity || this.room.createdAt || 0) > roomTtlMs;
+  }
+
+  async expireRoom() {
+    for (const socket of this.sockets.values()) {
+      try {
+        socket.close(1000, "expired");
+      } catch {}
+    }
+    this.sockets.clear();
+    await this.state.storage.delete("room");
+    this.room = null;
+  }
+
+  touchRoom() {
+    this.room.lastActivity = Date.now();
   }
 
   playerCount() {
@@ -154,6 +206,7 @@ export class Room {
 
   touchPlayer(clientId) {
     if (!this.room.players[clientId]) return;
+    this.touchRoom();
     this.room.players[clientId].lastSeen = Date.now();
     this.room.players[clientId].left = false;
   }
@@ -220,6 +273,7 @@ export class Room {
   async publish(event) {
     const cleanEvent = this.normalizeRoomEvent(event);
     if (!cleanEvent) return null;
+    this.touchRoom();
     this.applyRoomEvent(cleanEvent);
     this.rememberState(cleanEvent);
     const next = {
@@ -251,6 +305,7 @@ export class Room {
     const clientId = String(body.clientId || "");
     const name = normalizeName(body.name) || `玩家${clientId.slice(-4)}`;
     if (!clientId) return json({ error: "missing clientId" }, 400);
+    this.touchRoom();
 
     if (!this.room.players[clientId]) {
       if (this.playerCount() >= 2) {

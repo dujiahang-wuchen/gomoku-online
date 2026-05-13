@@ -8,6 +8,7 @@ const { WebSocketServer } = require("ws");
 const root = __dirname;
 const port = Number(process.env.PORT || 5173);
 const rooms = new Map();
+const roomTtlMs = 24 * 60 * 60 * 1000;
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -44,6 +45,9 @@ function getRoom(id) {
   if (!rooms.has(id)) {
     rooms.set(id, {
       id,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      initialized: true,
       players: {},
       events: [],
       seq: 0,
@@ -57,9 +61,34 @@ function getRoom(id) {
   return rooms.get(id);
 }
 
+function isRoomExpired(room) {
+  return Date.now() - (room.lastActivity || room.createdAt || 0) > roomTtlMs;
+}
+
+function expireRoom(id, room) {
+  for (const socket of room.sockets.values()) {
+    if (socket.readyState === 1) socket.close(1000, "expired");
+  }
+  for (const waiter of room.waiters.splice(0)) waiter();
+  rooms.delete(id);
+}
+
+function ensureActiveRoom(id, res) {
+  const room = getRoom(id);
+  if (!isRoomExpired(room)) return room;
+  expireRoom(id, room);
+  json(res, 410, { error: "房间已过期，请重新创建邀请" });
+  return null;
+}
+
+function touchRoom(room) {
+  room.lastActivity = Date.now();
+}
+
 function publish(room, event) {
   const cleanEvent = normalizeRoomEvent(room, event);
   if (!cleanEvent) return null;
+  touchRoom(room);
   applyRoomEvent(room, cleanEvent);
   rememberState(room, cleanEvent);
   const next = {
@@ -132,6 +161,7 @@ function isPlayerActive(player, now = Date.now()) {
 
 function touchPlayer(room, clientId) {
   if (!room.players[clientId]) return;
+  touchRoom(room);
   room.players[clientId].lastSeen = Date.now();
   room.players[clientId].left = false;
 }
@@ -200,7 +230,8 @@ const server = http.createServer(async (req, res) => {
 
     const joinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
     if (req.method === "POST" && joinMatch) {
-      const room = getRoom(joinMatch[1]);
+      const room = ensureActiveRoom(joinMatch[1], res);
+      if (!room) return;
       const body = await readBody(req);
       const clientId = String(body.clientId || "");
       const name = normalizeName(body.name) || `玩家${clientId.slice(-4)}`;
@@ -208,6 +239,7 @@ const server = http.createServer(async (req, res) => {
         json(res, 400, { error: "missing clientId" });
         return;
       }
+      touchRoom(room);
 
       if (!room.players[clientId]) {
         if (playerCount(room) >= 2) {
@@ -252,7 +284,8 @@ const server = http.createServer(async (req, res) => {
 
     const eventsMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/events$/);
     if (eventsMatch) {
-      const room = getRoom(eventsMatch[1]);
+      const room = ensureActiveRoom(eventsMatch[1], res);
+      if (!room) return;
 
       if (req.method === "POST") {
         const body = await readBody(req);
@@ -339,7 +372,8 @@ server.on("upgrade", (req, socket, head) => {
   const roomId = url.searchParams.get("room");
   const clientId = url.searchParams.get("client");
   const room = roomId ? rooms.get(roomId) : null;
-  if (!room || !clientId || !room.players[clientId]) {
+  if (!room || isRoomExpired(room) || !clientId || !room.players[clientId]) {
+    if (room && isRoomExpired(room)) expireRoom(roomId, room);
     socket.destroy();
     return;
   }

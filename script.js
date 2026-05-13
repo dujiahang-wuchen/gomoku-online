@@ -1273,8 +1273,36 @@ async function api(path, options = {}) {
     },
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || response.statusText);
+  if (!response.ok) {
+    const error = new Error(data.error || response.statusText);
+    error.status = response.status;
+    throw error;
+  }
   return data;
+}
+
+function isExpiredRoomError(error) {
+  return error && (error.status === 410 || /房间已过期/.test(error.message || ""));
+}
+
+function handleExpiredRoom() {
+  forgetActiveRoom();
+  serverRoom = null;
+  serverSeq = 0;
+  serverPolling = false;
+  serverPlayers = 0;
+  serverOnline = 0;
+  localRemoteColor = null;
+  connectionRole = null;
+  connectionState = "房间已过期，请重新创建邀请";
+  showNotice("房间已过期，请重新创建邀请", { persistent: true });
+  if (isServerPage()) {
+    const url = new URL(location.href);
+    url.searchParams.delete("room");
+    history.replaceState(null, "", url);
+  }
+  useCurrentScores();
+  render();
 }
 
 async function createServerInvite() {
@@ -1352,6 +1380,10 @@ async function pollServer() {
       }
       await new Promise((resolve) => setTimeout(resolve, pollDelay(data.events.length)));
     } catch (error) {
+      if (isExpiredRoomError(error)) {
+        handleExpiredRoom();
+        break;
+      }
       connectionState = `服务器连接中断：${error.message}`;
       render();
       await new Promise((resolve) => setTimeout(resolve, 1600));
@@ -1377,8 +1409,12 @@ function connectServerSocket() {
     handleServerSocketMessage(event.data);
   });
 
-  serverSocket.addEventListener("close", () => {
+  serverSocket.addEventListener("close", (event) => {
     if (!serverRoom) return;
+    if (event.reason === "expired") {
+      handleExpiredRoom();
+      return;
+    }
     connectionState = "实时连接断开，已切换备用同步";
     render();
     pollServer();
@@ -1689,6 +1725,10 @@ async function syncServerRoomState() {
         ? `已同步最新棋局，${isServerSocketOpen() ? "实时同步中" : "备用同步中"}，你执${colorName(localRemoteColor)}`
         : `已同步棋局，对方离线，等待重连，你执${colorName(localRemoteColor)}`;
   } catch (error) {
+    if (isExpiredRoomError(error)) {
+      handleExpiredRoom();
+      return;
+    }
     connectionState = `同步失败：${error.message}`;
   }
   render();
@@ -2039,6 +2079,10 @@ leaveRoomButton.addEventListener("click", () => {
   render();
 });
 joinInviteButton.addEventListener("click", () => joinInvite().catch((error) => {
+  if (isExpiredRoomError(error)) {
+    handleExpiredRoom();
+    return;
+  }
   connectionState = `加入失败：${error.message}`;
   render();
 }));
@@ -2058,6 +2102,10 @@ if (isServerPage() && initialRoom) {
   localStorage.setItem(profileReadyKey, "true");
   showGame();
   joinServerRoom(initialRoom).catch((error) => {
+    if (isExpiredRoomError(error)) {
+      handleExpiredRoom();
+      return;
+    }
     connectionState = `加入失败：${error.message}`;
     render();
   });
