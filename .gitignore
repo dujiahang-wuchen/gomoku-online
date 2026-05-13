@@ -1,5 +1,6 @@
 node_modules/
 public/
+.wrangler/
 *.log
 tunnel-url.txt
 .DS_Store
