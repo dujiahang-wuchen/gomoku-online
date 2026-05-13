@@ -2,7 +2,21 @@
 
 一个可以在浏览器里玩的小游戏大厅，目前内置五子棋，支持本地双人、人机对弈、好友房间链接对战。
 
-项目当前适合学习、练手和临时和朋友对战。如果想长期稳定给朋友玩，可以部署到 Render 或 Cloudflare Workers。
+项目第一版已经上线，当前正式部署在 Cloudflare Workers + Durable Objects 上。
+
+正式地址：
+
+```text
+https://wuchen-gomoku.cn
+```
+
+备用地址：
+
+```text
+https://www.wuchen-gomoku.cn
+```
+
+打开正式地址后，进入五子棋，点击「创建邀请」，复制生成的房间链接发给好友即可联机。
 
 ## 主要功能
 
@@ -41,7 +55,9 @@
 
 建议使用 Node.js 18 或更新版本。
 
-## 在电脑上运行
+## 本地开发运行
+
+本地运行主要用于开发、调试和临时测试。正式给好友使用时，优先使用上面的正式地址。
 
 第一次运行，先安装依赖：
 
@@ -113,6 +129,8 @@ http://192.168.1.23:5173
 
 ## 公网临时链接
 
+这是备用方案，主要用于本地调试或正式域名临时不可用时应急。正常情况下不需要使用。
+
 如果好友不在同一个 Wi-Fi，可以用 Cloudflare Tunnel 生成临时公网链接。
 
 先保持游戏服务器运行：
@@ -137,9 +155,18 @@ https://xxxx.trycloudflare.com
 
 注意：Cloudflare Tunnel 免费临时链接不稳定，电脑关机、网络断开、隧道进程关闭或 Cloudflare 回收后，旧链接就会失效。失效后需要重新运行 `npm run tunnel` 生成新链接。
 
-## Cloudflare Workers 固定部署
+## Cloudflare Workers 正式部署
 
-如果 Render 要求绑卡或部署不成功，可以改用 Cloudflare Workers。项目已经内置 `worker.mjs` 和 `wrangler.toml`，好友房间会通过 Durable Objects 保持实时同步。
+当前正式线上版本部署在 Cloudflare Workers。项目内置 `worker.mjs` 和 `wrangler.toml`，好友房间会通过 Durable Objects 保持实时同步。
+
+当前绑定域名：
+
+```text
+https://wuchen-gomoku.cn
+https://www.wuchen-gomoku.cn
+```
+
+`wrangler.toml` 中已经配置了这两个自定义域名，并指向 `gomoku-online` Worker。
 
 首次部署前，先登录 Cloudflare：
 
@@ -153,15 +180,38 @@ npx wrangler login
 npm run deploy:cloudflare
 ```
 
-部署成功后，终端会显示一个类似这样的固定链接：
-
-```text
-https://gomoku-online.你的账号.workers.dev
-```
-
-双方打开这个链接即可创建邀请、复制房间链接并联机对战。
+部署成功后，Cloudflare 会更新正式域名上的版本。双方打开正式地址即可创建邀请、复制房间链接并联机对战。
 
 说明：Cloudflare 免费额度适合个人练手和少量好友对战。如果访问量很大，后续需要关注 Cloudflare 账号里的用量限制。
+
+## 日常维护
+
+修改代码后，先运行检查：
+
+```bash
+npm run check
+```
+
+确认没有语法错误后，部署到 Cloudflare：
+
+```bash
+npm run deploy:cloudflare
+```
+
+如果只是修改 README 这类文档，不需要重新部署 Cloudflare，提交并推送到 GitHub 即可。
+
+## 上线验收记录
+
+最近一次正式域名验收结果：
+
+- `https://wuchen-gomoku.cn` 页面访问通过
+- `https://www.wuchen-gomoku.cn` 页面访问通过
+- 创建好友房间通过
+- 两位玩家加入同一房间通过
+- WebSocket 聊天同步通过
+- WebSocket 落子同步通过
+- HTTP 拉取房间事件通过
+- `npm run check` 通过
 
 ## 常见问题
 
@@ -174,11 +224,11 @@ https://gomoku-online.你的账号.workers.dev
 - 使用了公司网、校园网、公共 Wi-Fi，网络隔离导致设备互相访问不到
 - 你发给好友的是 VPN 或虚拟网卡地址，不是真正的 Wi-Fi 地址
 
-可以改用 Cloudflare Tunnel 临时公网链接，或者部署到云平台。
+可以改用正式地址 `https://wuchen-gomoku.cn`，或者在开发时使用 Cloudflare Tunnel 临时公网链接。
 
 ### 公网链接突然不能用了
 
-这是正常现象。当前使用的是 Cloudflare 免费临时隧道，不是固定网址。
+如果使用的是 `trycloudflare.com` 临时链接，这是正常现象。临时隧道不是固定网址。
 
 重新运行：
 
@@ -187,6 +237,8 @@ npm run tunnel
 ```
 
 然后使用新生成的 `trycloudflare.com` 链接。
+
+正式地址 `https://wuchen-gomoku.cn` 不依赖本地电脑和临时隧道，正常情况下不会因为电脑关机而失效。
 
 ### 好友对战有延迟
 
@@ -230,7 +282,8 @@ package.json    项目命令和依赖
 
 ## 后续优化方向
 
-- 部署到云平台，获得固定公网网址
-- 增加断线重连提示和房间过期清理
+- 增加房间过期清理
+- 增强断线重连提示
 - 增加观战模式
+- 美化登录页、大厅和分享文案
 - 继续增强困难 AI
