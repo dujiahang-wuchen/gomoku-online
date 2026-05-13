@@ -4,6 +4,14 @@ compatibility_date = "2026-05-12"
 
 assets = { directory = "public", binding = "ASSETS", not_found_handling = "404-page" }
 
+[[routes]]
+pattern = "wuchen-gomoku.cn"
+custom_domain = true
+
+[[routes]]
+pattern = "www.wuchen-gomoku.cn"
+custom_domain = true
+
 [[durable_objects.bindings]]
 name = "ROOMS"
 class_name = "Room"
