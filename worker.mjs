@@ -23,6 +23,10 @@ function isPlayerActive(player, now = Date.now()) {
   return !player.left && (player.online || now - (player.lastSeen || 0) < 12_000);
 }
 
+function roomExpiresAt(room) {
+  return (room.lastActivity || room.createdAt || Date.now()) + roomTtlMs;
+}
+
 function randomId(bytes = 4) {
   const values = crypto.getRandomValues(new Uint8Array(bytes));
   return Array.from(values, (value) => value.toString(16).padStart(2, "0")).join("");
@@ -153,7 +157,7 @@ export class Room {
       firstColor: Math.random() < 0.5 ? "black" : "white",
     };
     await this.saveRoom();
-    return json({ id: roomId });
+    return json({ id: roomId, expiresAt: roomExpiresAt(this.room) });
   }
 
   async saveRoom() {
@@ -287,7 +291,14 @@ export class Room {
     this.room.events.push(next);
     this.room.events = this.room.events.slice(-300);
     await this.saveRoom();
-    this.broadcast({ type: "events", events: [next], seq: this.room.seq, players: this.playerCount(), online: this.activePlayerCount() });
+    this.broadcast({
+      type: "events",
+      events: [next],
+      seq: this.room.seq,
+      players: this.playerCount(),
+      online: this.activePlayerCount(),
+      expiresAt: roomExpiresAt(this.room),
+    });
     return next;
   }
 
@@ -338,6 +349,7 @@ export class Room {
       seq: this.room.seq,
       state: this.room.state,
       chat: this.room.chat,
+      expiresAt: roomExpiresAt(this.room),
     });
   }
 
@@ -349,7 +361,7 @@ export class Room {
     if (body.type === "leave") this.markPlayerLeft(body.senderId);
     else this.touchPlayer(body.senderId);
     await this.publish(body);
-    return json({ ok: true });
+    return json({ ok: true, expiresAt: roomExpiresAt(this.room) });
   }
 
   async getEvents(url) {
@@ -364,6 +376,7 @@ export class Room {
       online: this.activePlayerCount(),
       state: this.room.state,
       chat: this.room.chat,
+      expiresAt: roomExpiresAt(this.room),
     });
   }
 
@@ -390,6 +403,7 @@ export class Room {
         online: this.activePlayerCount(),
         state: this.room.state,
         chat: this.room.chat,
+        expiresAt: roomExpiresAt(this.room),
       })
     );
     await this.publish({ type: "presence", senderId: clientId, players: this.playerCount(), online: this.activePlayerCount() });

@@ -65,6 +65,10 @@ function isRoomExpired(room) {
   return Date.now() - (room.lastActivity || room.createdAt || 0) > roomTtlMs;
 }
 
+function roomExpiresAt(room) {
+  return (room.lastActivity || room.createdAt || Date.now()) + roomTtlMs;
+}
+
 function expireRoom(id, room) {
   for (const socket of room.sockets.values()) {
     if (socket.readyState === 1) socket.close(1000, "expired");
@@ -102,7 +106,14 @@ function publish(room, event) {
   room.events.push(next);
   room.events = room.events.slice(-300);
   for (const waiter of room.waiters.splice(0)) waiter();
-  broadcast(room, { type: "events", events: [next], seq: room.seq, players: playerCount(room), online: activePlayerCount(room) });
+  broadcast(room, {
+    type: "events",
+    events: [next],
+    seq: room.seq,
+    players: playerCount(room),
+    online: activePlayerCount(room),
+    expiresAt: roomExpiresAt(room),
+  });
   return next;
 }
 
@@ -223,8 +234,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/rooms") {
       const id = crypto.randomBytes(4).toString("hex");
       await readBody(req);
-      getRoom(id);
-      json(res, 200, { id });
+      const room = getRoom(id);
+      json(res, 200, { id, expiresAt: roomExpiresAt(room) });
       return;
     }
 
@@ -278,6 +289,7 @@ const server = http.createServer(async (req, res) => {
         seq: room.seq,
         state: room.state,
         chat: room.chat,
+        expiresAt: roomExpiresAt(room),
       });
       return;
     }
@@ -299,7 +311,7 @@ const server = http.createServer(async (req, res) => {
           touchPlayer(room, body.senderId);
         }
         publish(room, body);
-        json(res, 200, { ok: true });
+        json(res, 200, { ok: true, expiresAt: roomExpiresAt(room) });
         return;
       }
 
@@ -326,6 +338,7 @@ const server = http.createServer(async (req, res) => {
           online: activePlayerCount(room),
           state: room.state,
           chat: room.chat,
+          expiresAt: roomExpiresAt(room),
         });
         return;
       }
@@ -401,6 +414,7 @@ wss.on("connection", (ws) => {
       online: activePlayerCount(room),
       state: room.state,
       chat: room.chat,
+      expiresAt: roomExpiresAt(room),
     })
   );
   publish(room, {

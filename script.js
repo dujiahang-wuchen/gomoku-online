@@ -93,6 +93,8 @@ let serverReconnectAttempts = 0;
 let serverReconnectNotified = false;
 let serverPlayers = 0;
 let serverOnline = 0;
+let serverExpiresAt = 0;
+let expiryNoticeActive = false;
 let undoRequestId = null;
 let undoPending = false;
 let rematchRequestId = null;
@@ -600,10 +602,52 @@ function chatStatusText() {
 
 function roomMetaText() {
   if (isServerGame()) {
-    return `房间 ${serverRoom} · ${serverPresenceText()} · 在线 ${serverOnline}/${Math.max(serverPlayers, 2)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
+    return `房间 ${serverRoom} · ${serverPresenceText()} · 在线 ${serverOnline}/${Math.max(serverPlayers, 2)} · ${serverExpiryText()} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   }
   if (isRemoteGame()) return `点对点连接 · 你执${colorName(localRemoteColor)} · 悔棋 ${undoQuota[localRemoteColor]}/3`;
   return isServerPage() ? "创建邀请后可复制链接发给好友" : "本地模式可使用邀请码连接";
+}
+
+function serverExpiryText() {
+  if (!serverExpiresAt) return "24小时不活动后过期";
+  const remaining = serverExpiresAt - Date.now();
+  if (remaining <= 0) return "房间即将过期";
+  const minutes = Math.ceil(remaining / 60000);
+  if (minutes < 60) return `房间剩余 ${minutes} 分钟`;
+  const hours = Math.ceil(minutes / 60);
+  return `房间剩余 ${hours} 小时`;
+}
+
+function isServerExpirySoon() {
+  if (!serverExpiresAt) return false;
+  const remaining = serverExpiresAt - Date.now();
+  return remaining > 0 && remaining <= 60 * 60 * 1000;
+}
+
+function clearServerExpiryNotice() {
+  if (!expiryNoticeActive) return;
+  expiryNoticeActive = false;
+  hideNotice();
+}
+
+function checkServerExpiryNotice() {
+  if (!isServerGame() || !serverExpiresAt) {
+    clearServerExpiryNotice();
+    return;
+  }
+  if (!isServerExpirySoon()) {
+    clearServerExpiryNotice();
+    return;
+  }
+  if (expiryNoticeActive) return;
+  expiryNoticeActive = true;
+  showNotice("房间还有不到 1 小时过期，点击“同步棋局”可延长", { persistent: true });
+}
+
+function updateServerExpiry(data) {
+  if (!data || !data.expiresAt) return;
+  serverExpiresAt = Number(data.expiresAt) || 0;
+  checkServerExpiryNotice();
 }
 
 function serverPresenceText() {
@@ -1342,6 +1386,8 @@ function handleExpiredRoom() {
   serverPolling = false;
   serverPlayers = 0;
   serverOnline = 0;
+  serverExpiresAt = 0;
+  clearServerExpiryNotice();
   localRemoteColor = null;
   connectionRole = null;
   connectionState = "房间已过期，请重新创建邀请";
@@ -1375,11 +1421,13 @@ async function joinServerRoom(roomId) {
     body: JSON.stringify({ clientId: serverClientId, name: currentNickname() }),
   });
   hideNotice();
+  expiryNoticeActive = false;
   serverRoom = joined.roomId;
   rememberActiveRoom(serverRoom);
   serverSeq = joined.seq;
   serverPlayers = joined.players;
   serverOnline = joined.online || 0;
+  updateServerExpiry(joined);
   localRemoteColor = joined.color === "black" ? black : white;
   roomScores = createScores();
   scores = roomScores;
@@ -1423,6 +1471,7 @@ async function pollServer() {
       if (typeof data.players === "number") {
         serverPlayers = data.players;
         serverOnline = data.online ?? serverOnline;
+        updateServerExpiry(data);
         if (serverOnline > 1) {
           if (isLeaveNoticeState()) showNotice("好友已重新加入房间");
           connectionState = serverConnectionText({ mode: hasPendingServerReconnect() ? "正在重连，备用同步" : "备用同步" });
@@ -1513,6 +1562,7 @@ function handleServerSocketMessage(raw) {
     serverSeq = Math.max(serverSeq, message.seq || 0);
     serverPlayers = message.players ?? serverPlayers;
     serverOnline = message.online ?? serverOnline;
+    updateServerExpiry(message);
     if (message.chat) setChatMessages(message.chat);
     if (message.state) setGameState(message.state);
     connectionState = serverConnectionText({ players: message.players, online: message.online, mode: "实时同步" });
@@ -1525,9 +1575,11 @@ function handleServerSocketMessage(raw) {
   if (!events.length) {
     serverPlayers = message.players ?? serverPlayers;
     serverOnline = message.online ?? serverOnline;
+    updateServerExpiry(message);
     render();
     return;
   }
+  updateServerExpiry(message);
   for (const event of events) {
     serverSeq = Math.max(serverSeq, event.seq);
     if (event.senderId === serverClientId) continue;
@@ -1554,6 +1606,7 @@ function handleServerEvent(event) {
   if (event.type === "leave") {
     serverPlayers = event.players ?? serverPlayers;
     serverOnline = event.online ?? serverOnline;
+    updateServerExpiry(event);
     const message = event.reason === "close" ? "好友关闭了浏览器或离开页面" : "好友已退出房间";
     connectionState = message;
     showNotice(message, { persistent: true });
@@ -1563,6 +1616,7 @@ function handleServerEvent(event) {
     const wasOnline = serverOnline;
     serverPlayers = event.players || serverPlayers;
     serverOnline = event.online ?? serverOnline;
+    updateServerExpiry(event);
     if (event.players > 1 && event.online > 1 && wasOnline < 2) showNotice("好友已加入房间");
     if (event.players > 1 && event.online < 2 && wasOnline > 1 && !isLeaveNoticeState()) {
       const message = "好友离线了，可能关闭了浏览器或断开网络";
@@ -1728,10 +1782,12 @@ function sendServerEvent(message) {
   api(`/api/rooms/${serverRoom}/events`, {
     method: "POST",
     body: payload,
-  }).catch((error) => {
-    connectionState = `发送失败：${error.message}`;
-    render();
-  });
+  })
+    .then(updateServerExpiry)
+    .catch((error) => {
+      connectionState = `发送失败：${error.message}`;
+      render();
+    });
 }
 
 function notifyServerLeave(options = {}) {
@@ -1788,6 +1844,7 @@ async function syncServerRoomState() {
     serverSeq = Math.max(serverSeq, data.seq || serverSeq);
     serverPlayers = data.players ?? serverPlayers;
     serverOnline = data.online ?? serverOnline;
+    updateServerExpiry(data);
     if (data.chat) setChatMessages(data.chat);
     if (data.state) {
       setGameState(data.state);
@@ -1854,6 +1911,8 @@ function leaveServerRoom(message = "未连接") {
   serverPolling = false;
   serverPlayers = 0;
   serverOnline = 0;
+  serverExpiresAt = 0;
+  expiryNoticeActive = false;
   localRemoteColor = null;
   connectionRole = null;
   connectionState = message;
@@ -2169,6 +2228,11 @@ acceptAnswerButton.addEventListener("click", () => acceptAnswer().catch((error) 
 answerCode.addEventListener("input", render);
 inviteCode.addEventListener("input", render);
 window.addEventListener("pagehide", notifyPageClosing);
+window.setInterval(() => {
+  if (!isServerGame()) return;
+  checkServerExpiryNotice();
+  render();
+}, 60000);
 
 const initialRoom =
   new URLSearchParams(location.search).get("room") ||
