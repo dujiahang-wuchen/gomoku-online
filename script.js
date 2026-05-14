@@ -20,6 +20,7 @@ const joinInviteButton = document.querySelector("#joinInvite");
 const copyInviteButton = document.querySelector("#copyInvite");
 const syncRoomButton = document.querySelector("#syncRoom");
 const leaveRoomButton = document.querySelector("#leaveRoom");
+const closeRoomButton = document.querySelector("#closeRoom");
 const acceptAnswerButton = document.querySelector("#acceptAnswer");
 const inviteCode = document.querySelector("#inviteCode");
 const answerCode = document.querySelector("#answerCode");
@@ -553,6 +554,7 @@ function render() {
   copyInviteButton.disabled = !inviteCode.value.trim();
   syncRoomButton.disabled = !canSyncRoom();
   leaveRoomButton.disabled = !isServerGame() && !isRemoteGame();
+  closeRoomButton.disabled = !isServerGame();
   acceptAnswerButton.disabled =
     isServerPage() ||
     connectionRole !== "host" ||
@@ -1373,10 +1375,10 @@ async function api(path, options = {}) {
 }
 
 function isExpiredRoomError(error) {
-  return error && (error.status === 410 || /房间已过期/.test(error.message || ""));
+  return error && (error.status === 410 || /房间已过期|房间已关闭/.test(error.message || ""));
 }
 
-function handleExpiredRoom() {
+function handleExpiredRoom(message = "房间已过期，请重新创建邀请") {
   forgetActiveRoom();
   resetServerReconnectState();
   if (serverSocket) serverSocket.close();
@@ -1390,8 +1392,8 @@ function handleExpiredRoom() {
   clearServerExpiryNotice();
   localRemoteColor = null;
   connectionRole = null;
-  connectionState = "房间已过期，请重新创建邀请";
-  showNotice("房间已过期，请重新创建邀请", { persistent: true });
+  connectionState = message;
+  showNotice(message, { persistent: true });
   if (isServerPage()) {
     const url = new URL(location.href);
     url.searchParams.delete("room");
@@ -1524,6 +1526,10 @@ function connectServerSocket() {
     if (!serverRoom) return;
     if (event.reason === "expired") {
       handleExpiredRoom();
+      return;
+    }
+    if (event.reason === "closed") {
+      handleExpiredRoom("房间已关闭，请重新创建邀请");
       return;
     }
     connectionState =
@@ -1928,6 +1934,18 @@ function leaveServerRoom(message = "未连接") {
   render();
 }
 
+async function closeServerRoom() {
+  if (!isServerGame()) return;
+  const ok = window.confirm("关闭房间后，当前邀请链接会失效，好友需要新链接才能加入。确定关闭吗？");
+  if (!ok) return;
+  await api(`/api/rooms/${serverRoom}`, {
+    method: "DELETE",
+    body: JSON.stringify({ clientId: serverClientId }),
+  });
+  leaveServerRoom("房间已关闭");
+  showNotice("房间已关闭，旧邀请链接已失效", { persistent: true });
+}
+
 async function copyInviteLink() {
   const value = inviteCode.value.trim();
   if (!value) return;
@@ -2213,9 +2231,17 @@ leaveRoomButton.addEventListener("click", () => {
   }
   render();
 });
+closeRoomButton.addEventListener("click", () => closeServerRoom().catch((error) => {
+  if (isExpiredRoomError(error)) {
+    handleExpiredRoom(error.message || "房间已关闭，请重新创建邀请");
+    return;
+  }
+  connectionState = `关闭失败：${error.message}`;
+  render();
+}));
 joinInviteButton.addEventListener("click", () => joinInvite().catch((error) => {
   if (isExpiredRoomError(error)) {
-    handleExpiredRoom();
+    handleExpiredRoom(error.message || "房间已过期，请重新创建邀请");
     return;
   }
   connectionState = `加入失败：${error.message}`;
@@ -2243,7 +2269,7 @@ if (isServerPage() && initialRoom) {
   showGame();
   joinServerRoom(initialRoom).catch((error) => {
     if (isExpiredRoomError(error)) {
-      handleExpiredRoom();
+      handleExpiredRoom(error.message || "房间已过期，请重新创建邀请");
       return;
     }
     connectionState = `加入失败：${error.message}`;

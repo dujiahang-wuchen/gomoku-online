@@ -77,8 +77,21 @@ function expireRoom(id, room) {
   rooms.delete(id);
 }
 
+function closeRoom(id, room) {
+  for (const socket of room.sockets.values()) {
+    if (socket.readyState === 1) socket.close(1000, "closed");
+  }
+  room.sockets.clear();
+  for (const waiter of room.waiters.splice(0)) waiter();
+  rooms.delete(id);
+}
+
 function ensureActiveRoom(id, res) {
-  const room = getRoom(id);
+  const room = rooms.get(id);
+  if (!room) {
+    json(res, 410, { error: "房间已关闭或已过期，请重新创建邀请" });
+    return null;
+  }
   if (!isRoomExpired(room)) return room;
   expireRoom(id, room);
   json(res, 410, { error: "房间已过期，请重新创建邀请" });
@@ -236,6 +249,21 @@ const server = http.createServer(async (req, res) => {
       await readBody(req);
       const room = getRoom(id);
       json(res, 200, { id, expiresAt: roomExpiresAt(room) });
+      return;
+    }
+
+    const closeMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);
+    if (req.method === "DELETE" && closeMatch) {
+      const room = ensureActiveRoom(closeMatch[1], res);
+      if (!room) return;
+      const body = await readBody(req);
+      const clientId = String(body.clientId || "");
+      if (!clientId || !room.players[clientId]) {
+        json(res, 403, { error: "not in room" });
+        return;
+      }
+      closeRoom(closeMatch[1], room);
+      json(res, 200, { ok: true });
       return;
     }
 

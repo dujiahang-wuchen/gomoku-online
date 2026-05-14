@@ -57,6 +57,11 @@ export default {
       return roomStub(env, id).fetch(roomRequest(request, id, "/init"));
     }
 
+    const closeMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);
+    if (request.method === "DELETE" && closeMatch) {
+      return roomStub(env, closeMatch[1]).fetch(roomRequest(request, closeMatch[1], "/close"));
+    }
+
     const joinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
     if (joinMatch) {
       return roomStub(env, joinMatch[1]).fetch(roomRequest(request, joinMatch[1], "/join"));
@@ -106,6 +111,10 @@ export class Room {
     if (this.isExpired()) {
       await this.expireRoom();
       return json({ error: "房间已过期，请重新创建邀请" }, 410);
+    }
+
+    if (url.pathname === "/close" && request.method === "DELETE") {
+      return this.closeRoom(request);
     }
 
     if (url.pathname === "/join" && request.method === "POST") {
@@ -174,10 +183,10 @@ export class Room {
     return Date.now() - (this.room.lastActivity || this.room.createdAt || 0) > roomTtlMs;
   }
 
-  async expireRoom() {
+  async expireRoom(reason = "expired") {
     for (const socket of this.sockets.values()) {
       try {
-        socket.close(1000, "expired");
+        socket.close(1000, reason);
       } catch {}
     }
     this.sockets.clear();
@@ -187,6 +196,16 @@ export class Room {
 
   touchRoom() {
     this.room.lastActivity = Date.now();
+  }
+
+  async closeRoom(request) {
+    const body = await parseJson(request);
+    const clientId = String(body.clientId || "");
+    if (!clientId || !this.room.players[clientId]) {
+      return json({ error: "not in room" }, 403);
+    }
+    await this.expireRoom("closed");
+    return json({ ok: true });
   }
 
   playerCount() {
