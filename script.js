@@ -88,6 +88,9 @@ let serverRoom = null;
 let serverSeq = 0;
 let serverPolling = false;
 let serverSocket = null;
+let serverReconnectTimer = null;
+let serverReconnectAttempts = 0;
+let serverReconnectNotified = false;
 let serverPlayers = 0;
 let serverOnline = 0;
 let undoRequestId = null;
@@ -605,7 +608,10 @@ function roomMetaText() {
 
 function serverPresenceText() {
   if (serverPlayers < 2) return "等待好友加入";
-  if (serverOnline > 1) return isServerSocketOpen() ? "实时同步" : "备用同步";
+  if (serverOnline > 1) {
+    if (hasPendingServerReconnect()) return "正在重连";
+    return isServerSocketOpen() ? "实时同步" : "备用同步";
+  }
   return "对方离线";
 }
 
@@ -616,6 +622,47 @@ function serverConnectionText(options = {}) {
   if (players < 2) return `房间已创建，等待好友打开链接，你执${colorName(localRemoteColor)}`;
   if (online > 1) return `${mode}中，你执${colorName(localRemoteColor)}`;
   return `对方离线，等待重连，你执${colorName(localRemoteColor)}`;
+}
+
+function hasPendingServerReconnect() {
+  return Boolean(serverReconnectTimer || serverReconnectAttempts > 0);
+}
+
+function clearServerReconnectTimer() {
+  if (!serverReconnectTimer) return;
+  window.clearTimeout(serverReconnectTimer);
+  serverReconnectTimer = null;
+}
+
+function resetServerReconnectState() {
+  clearServerReconnectTimer();
+  serverReconnectAttempts = 0;
+  serverReconnectNotified = false;
+}
+
+function scheduleServerReconnect() {
+  if (!serverRoom || isServerSocketOpen() || isServerSocketConnecting() || serverReconnectTimer) return;
+  if (!("WebSocket" in window)) {
+    pollServer();
+    return;
+  }
+
+  const delay = Math.min(1000 * 2 ** serverReconnectAttempts, 10000);
+  serverReconnectAttempts += 1;
+
+  if (serverPlayers > 1 && serverOnline > 1) {
+    connectionState = serverConnectionText({ mode: "正在重连，备用同步" });
+    if (!serverReconnectNotified) {
+      showNotice("实时连接中断，正在自动重连");
+      serverReconnectNotified = true;
+    }
+    render();
+  }
+
+  serverReconnectTimer = window.setTimeout(() => {
+    serverReconnectTimer = null;
+    connectServerSocket();
+  }, delay);
 }
 
 function updatePlayerBadge() {
@@ -1287,6 +1334,9 @@ function isExpiredRoomError(error) {
 
 function handleExpiredRoom() {
   forgetActiveRoom();
+  resetServerReconnectState();
+  if (serverSocket) serverSocket.close();
+  serverSocket = null;
   serverRoom = null;
   serverSeq = 0;
   serverPolling = false;
@@ -1349,7 +1399,10 @@ async function joinServerRoom(roomId) {
   render();
   connectServerSocket();
   window.setTimeout(() => {
-    if (!isServerSocketOpen()) pollServer();
+    if (!isServerSocketOpen()) {
+      pollServer();
+      scheduleServerReconnect();
+    }
   }, 900);
 }
 
@@ -1372,12 +1425,13 @@ async function pollServer() {
         serverOnline = data.online ?? serverOnline;
         if (serverOnline > 1) {
           if (isLeaveNoticeState()) showNotice("好友已重新加入房间");
-          connectionState = serverConnectionText({ mode: "备用同步" });
+          connectionState = serverConnectionText({ mode: hasPendingServerReconnect() ? "正在重连，备用同步" : "备用同步" });
         } else if (!isLeaveNoticeState()) {
           connectionState = serverConnectionText({ mode: "备用同步" });
         }
         render();
       }
+      scheduleServerReconnect();
       await new Promise((resolve) => setTimeout(resolve, pollDelay(data.events.length)));
     } catch (error) {
       if (isExpiredRoomError(error)) {
@@ -1393,15 +1447,22 @@ async function pollServer() {
 }
 
 function connectServerSocket() {
-  if (!("WebSocket" in window) || !serverRoom) return;
-  if (serverSocket) serverSocket.close();
+  if (!serverRoom) return;
+  if (!("WebSocket" in window)) {
+    pollServer();
+    return;
+  }
+  if (isServerSocketOpen() || isServerSocketConnecting()) return;
 
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   const socketUrl = `${protocol}//${location.host}/ws?room=${encodeURIComponent(serverRoom)}&client=${encodeURIComponent(serverClientId)}`;
   serverSocket = new WebSocket(socketUrl);
 
   serverSocket.addEventListener("open", () => {
+    const restored = hasPendingServerReconnect();
+    resetServerReconnectState();
     connectionState = serverConnectionText({ mode: "实时同步" });
+    if (restored && serverOnline > 1) showNotice("实时连接已恢复");
     render();
   });
 
@@ -1410,25 +1471,39 @@ function connectServerSocket() {
   });
 
   serverSocket.addEventListener("close", (event) => {
+    if (serverSocket === event.currentTarget) serverSocket = null;
     if (!serverRoom) return;
     if (event.reason === "expired") {
       handleExpiredRoom();
       return;
     }
-    connectionState = "实时连接断开，已切换备用同步";
+    connectionState =
+      serverPlayers > 1 && serverOnline > 1
+        ? serverConnectionText({ mode: "正在重连，备用同步" })
+        : serverConnectionText({ mode: "备用同步" });
     render();
     pollServer();
+    scheduleServerReconnect();
   });
 
   serverSocket.addEventListener("error", () => {
     if (!serverRoom) return;
-    connectionState = "实时连接异常，已切换备用同步";
+    connectionState =
+      serverPlayers > 1 && serverOnline > 1
+        ? serverConnectionText({ mode: "正在重连，备用同步" })
+        : serverConnectionText({ mode: "备用同步" });
     render();
+    pollServer();
+    if (!isServerSocketConnecting()) scheduleServerReconnect();
   });
 }
 
 function isServerSocketOpen() {
   return Boolean(serverSocket && serverSocket.readyState === 1);
+}
+
+function isServerSocketConnecting() {
+  return Boolean(serverSocket && serverSocket.readyState === 0);
 }
 
 function handleServerSocketMessage(raw) {
@@ -1770,6 +1845,7 @@ function sendServerState() {
 
 function leaveServerRoom(message = "未连接") {
   const socket = serverSocket;
+  resetServerReconnectState();
   notifyServerLeave({ reason: "exit" });
   if (socket) window.setTimeout(() => socket.close(), 60);
   serverSocket = null;
